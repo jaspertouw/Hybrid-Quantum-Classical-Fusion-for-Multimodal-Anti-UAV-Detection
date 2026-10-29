@@ -1,0 +1,15 @@
+{
+  "runtime_config_version": 1,
+  "protocol_path": "experiments/protocol/v1.json",
+  "dataset_root": "Anti-UAV-RGBT",
+  "checkpoint_root": "pretrained_models",
+  "output_root": "outputs/successor",
+  "artifact_layout": {
+    "manifests": "manifests",
+    "caches": "caches",
+    "models": "models",
+    "metrics": "metrics",
+    "plots": "plots",
+    "logs": "logs"
+  }
+}
