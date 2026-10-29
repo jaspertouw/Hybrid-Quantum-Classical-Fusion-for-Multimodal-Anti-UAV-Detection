@@ -23,7 +23,3 @@ features rather than raw images. Planned comparisons include a variational quant
 an evidential MLP, an RBF-SVM, a random forest, and the inherited naive/ABF/DBF/gated fusion
 baselines. The thesis manuscript and its experiment-design chapter are maintained privately and
 are not published in this repository.
-
-Repository-specific setup and publication guidance is in [`docs/PROJECT_SETUP.md`](docs/PROJECT_SETUP.md).
-The Anti-UAV dataset, pretrained checkpoints, generated outputs, and cluster logs are deliberately
-excluded from version control.

@@ -1,0 +1,160 @@
+{
+  "protocol": {
+    "name": "hybrid-quantum-classical-fusion-antiuav",
+    "version": "1.0.0",
+    "status": "frozen",
+    "frozen_on": "2026-10-29",
+    "methodology_source": "thesis/sections/3-methodology.tex",
+    "change_policy": "Never edit a frozen version in place. Copy it to a new semantic version and record the scientific effect in CHANGELOG.md."
+  },
+  "dataset": {
+    "name": "Anti-UAV RGB-T",
+    "expected_sequence_counts": {
+      "train": 160,
+      "val": 67,
+      "test": 91
+    },
+    "membership_canonicalization": "UTF-8 sequence directory names, sorted lexicographically, each followed by LF",
+    "membership_sha256": {
+      "train": "8895c899d164c4acfbb5e4bb703459aba32f8fdd4ac053e61eddefe542548460",
+      "val": "6cf1b47f7dc3307293d9f8c7ba66d87f615715ad1e33d2d555ed4b1ca933c4cc",
+      "test": "5a16325a8794198f6c9f3148fd71d5689286a565ecca9546840d69f87dfcf0ec"
+    },
+    "paired_presence": "ir_exist OR rgb_exist",
+    "paired_presence_unchanged_by_corruption": true,
+    "box_coordinate_system": "sensor_native",
+    "test_set_policy": "No implementation choice, fitting, tuning, checkpoint selection, preprocessing fitting, or threshold selection may inspect test outcomes."
+  },
+  "detector_preprocessing": {
+    "candidate_score": "objectness * b_uav",
+    "candidate_score_minimum": 0.25,
+    "nms": {
+      "class": "UAV",
+      "iou_threshold": 0.45
+    },
+    "survivor_selection": "highest_candidate_score"
+  },
+  "features": {
+    "order": [
+      "rgb.b_uav",
+      "rgb.semantic_uncertainty",
+      "rgb.objectness",
+      "rgb.spatial_uncertainty",
+      "thermal.b_uav",
+      "thermal.semantic_uncertainty",
+      "thermal.objectness",
+      "thermal.spatial_uncertainty"
+    ],
+    "spatial_uncertainty": {
+      "coordinate_order": ["cx", "cy", "w", "h"],
+      "formula": "mean([var_cx/max(w,1)^2, var_cy/max(h,1)^2, var_w/max(w,1)^2, var_h/max(h,1)^2])",
+      "selection_uses_uncapped_value": true,
+      "learned_feature_cap_training_percentile": 99.5
+    },
+    "missing_detection": {
+      "b_uav": 0.0,
+      "b_background": 0.0,
+      "semantic_uncertainty": 1.0,
+      "objectness": 0.0,
+      "spatial_uncertainty": "training_99.5_percentile_cap",
+      "candidate_box": null
+    },
+    "box_selection": {
+      "rule": "lowest_uncapped_spatial_uncertainty_among_available_boxes",
+      "tie_winner": "thermal"
+    },
+    "normalization": {
+      "mlp_vqc": "training_only_min_max_after_spatial_cap",
+      "denominator_minimum": 1e-08,
+      "constant_feature_value": 0.0,
+      "validation_test_clip_range": [0.0, 1.0],
+      "svm": "standardization_fitted_inside_sequence_grouped_training_folds"
+    }
+  },
+  "models": {
+    "vqc": {
+      "qubits": 4,
+      "depth": [1, 2, 3, 4],
+      "learning_rate": [0.001, 0.01],
+      "entanglement": "ordered_ring",
+      "reupload_before_each_block": true
+    },
+    "mlp": {
+      "hidden_widths": [[8], [16], [32], [8, 8], [16, 16], [32, 32]],
+      "learning_rate": [0.001, 0.01]
+    },
+    "rbf_svm": {
+      "C": [0.1, 1.0, 10.0],
+      "gamma": [0.01, 0.1, 1.0],
+      "calibration": "sigmoid_from_pooled_out_of_fold_predictions",
+      "sequence_grouped_folds": 3
+    },
+    "random_forest": {
+      "trees": 100,
+      "bootstrap": true,
+      "criterion": "gini",
+      "max_features": "sqrt",
+      "max_depth": [4, 8, null],
+      "min_samples_leaf": [1, 5, 20]
+    },
+    "dbf_lambda": [0.25, 0.5, 1.0, 2.0, 4.0],
+    "dbf_tie_preference": 1.0
+  },
+  "training": {
+    "selection_seed": 11,
+    "final_seeds": [11, 22, 33, 44, 55],
+    "runtime_fallback_seeds": [11, 22, 33],
+    "optimizer": "Adam",
+    "batch_size": 128,
+    "max_epochs": 100,
+    "early_stopping_patience": 10,
+    "reference_acceptance_threshold": 0.5,
+    "selection_metric": "sequence_mean_edtc_acc",
+    "selection_tiebreaker": "brier_score",
+    "optional_training_pair_cap": 20000,
+    "kl_annealing_epochs": 10,
+    "threshold_grid": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
+    "threshold_tie_rule": "smallest"
+  },
+  "corruptions": {
+    "application_point": "after_resize_before_detector_normalization",
+    "pixel_range": [0.0, 1.0],
+    "one_sensor_at_a_time": true,
+    "master_noise_seed": 2026,
+    "noise_seed_identifiers": ["split", "sequence", "frame", "sensor", "corruption", "severity"],
+    "gaussian_noise_sigma": [0.02, 0.05, 0.1, 0.15, 0.2],
+    "gaussian_blur_sigma": [1.0, 2.0, 3.0, 4.0, 5.0],
+    "gaussian_blur_padding": "reflection",
+    "gaussian_blur_kernel": "2*ceil(3*sigma)+1",
+    "rgb_illumination_multiplier": [0.8, 0.6, 0.4, 0.2, 0.1],
+    "thermal_contrast_multiplier": [0.8, 0.6, 0.4, 0.2, 0.1],
+    "dropout": "omit_detector_output_and_candidate"
+  },
+  "evaluation": {
+    "edtc_alpha": 0.2,
+    "edtc_beta": 0.3,
+    "zero_positive_sequence_penalty": 0.0,
+    "zero_overlap_failure": true,
+    "presence_decision_threshold": 0.5,
+    "acceptance_requires_available_box": true,
+    "localization_failure_iou": 0.5,
+    "ap_iou": 0.5,
+    "map_iou": [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
+    "ap_interpolation_points": 101,
+    "ece_equal_width_bins": 10,
+    "bootstrap_replicates": 2000,
+    "bootstrap_interval_percent": 95,
+    "bootstrap_unit": "sequence",
+    "practical_relevance_edtc_acc": 0.01,
+    "primary_robustness_summary": "equal_weight_mean_edtc_acc_across_30_corruption_conditions",
+    "high_disagreement_validation_weighted_percentile": 90
+  },
+  "vqc_ablations": {
+    "reference": "depth_2_ring_with_reuploading",
+    "variants": ["no_cnot", "no_reuploading", "chain_depth_2"],
+    "chain": ["1->2", "2->3", "3->4"],
+    "depolarizing_noise": [0.0, 0.001, 0.01],
+    "sensitivity_pair_cap": 2000,
+    "test_noise_pair_cap": 2000
+  }
+}
