@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=siamcar_stg2_ir
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/stage2_siamcar_evidential_ir_%A.out
+
+# Phase 4.4 Stage 2 — SiamCAR evidential classification head: IR (thermal) stream.
+#
+# Protocol:
+#   Single phase (40 epochs): entire Stage 1 network frozen; only cls_evi trains.
+#   KL annealing: 0 → 1 over first 10 epochs (implicit curriculum).
+#   Optimizer: SGD lr=1e-4, CosineAnnealingLR, weight_decay=1e-4.
+#
+# At inference, cls_evi replaces cls_logits, providing Dirichlet belief masses
+# for the downstream uncertainty fusion module.
+#
+# Starting checkpoint: siamcar_ir_stage1g_best.pth  (Phase 4.3 Stage 1g IR)
+# Output:
+#   /home/ssuttorp/pretrained_models/siamcar_gaussian/siamcar_ir_stage2_best.pth
+#   /home/ssuttorp/pretrained_models/siamcar_gaussian/siamcar_ir_stage2_history.csv
+#
+# Can run in parallel with stage2_siamcar_evidential_rgb.job (fully independent).
+# Prerequisite: stage1_siamcar_gaussian_ir.job must have completed.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+SIAMCAR=$REPO/resources/SiamCAR
+SNAP=/home/ssuttorp/pretrained_models/siamcar_gaussian
+
+export PYTHONPATH=$SIAMCAR:$PYTHONPATH
+
+mkdir -p $SNAP
+mkdir -p $REPO/logs
+
+cd $SIAMCAR
+
+srun python -u pysot/models/siamcar_gaussian/train_stage2_evidential.py \
+    --cfg             experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --stage2_cfg      pysot/models/siamcar_gaussian/config_stage2.yaml \
+    --stage1_path     $SNAP/siamcar_ir_stage1g_best.pth \
+    --pretrained_path /home/ssuttorp/pretrained_models/siamcar_thermal_final.pth \
+    --save_dir        $SNAP \
+    --name            siamcar_ir_stage2 \
+    --epochs          40 \
+    --K               2 \
+    --lr              1e-4 \
+    --lambda_evi      1.0 \
+    --weight_decay    1e-4 \
+    --momentum        0.9 \
+    --grad_clip       10.0 \
+    --num_workers     8 \
+    --max_steps_per_epoch 1500 \
+    --check_every     5 \
+    --resume
+
+echo ""
+echo "Stage 2 IR (SiamCAR) complete."
+echo "Best checkpoint : $SNAP/siamcar_ir_stage2_best.pth"
+echo "Training history: $SNAP/siamcar_ir_stage2_history.csv"
+echo ""
+echo "Next step: sbatch $REPO/scripts/stage2_siamcar_evidential_rgb.job  (if not already running)"

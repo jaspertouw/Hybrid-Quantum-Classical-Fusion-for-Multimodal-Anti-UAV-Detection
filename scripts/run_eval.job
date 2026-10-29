@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=edtc_eval
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=03:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/eval_%A.out
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+cd $EDTC
+
+MODEL=/home/ssuttorp/pretrained_models/UAVTrackEH.pth.tar
+
+# Stage 1: run tracker on all 91 test sequences -> saves per-sequence .txt result files
+srun python tracking/test.py \
+    --tracker_name uavtrack_eh \
+    --tracker_param baseline \
+    --dataset_name antiuav \
+    --threads 8 \
+    --num_gpus 1 \
+    --params__model $MODEL \
+    --params__search_area_scale 4.55
+
+# Stage 2: compute Mixed Measure score from tracker results vs ground truth
+srun python tracking/evaluate_antiuav_performance.py
+
+# Stage 3: compute Acc, IoU, ECE, AUROC, AUSE, FPS from saved confidence files
+srun python tracking/compute_metrics.py \
+    --results_dir $REPO/resources/EDTC/test/tracking_results/uavtrack_eh/baseline \
+    --dataset_dir /home/ssuttorp/Anti-UAV-RGBT/test \
+    --iou_threshold 0.5
+
+echo "Evaluation complete."

@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=attribute_eval_all
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=00:15:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/attribute_eval_all_%A.out
+
+# Attribute-based robustness evaluation — ALL det-only variants x ALL seeds.
+# CPU-only post-hoc rescoring of saved per-frame logs (no model load).
+#
+# Per variant (IR, RGB, DBF, ABF, Naive, Gated, DMS) and per seed {0,1,2} this
+# pools frames per Anti-UAV-RGBT attribute (TC/FM/SV/LI/LR/OV/OC + TC tiers),
+# then aggregates mean+/-std over seeds and prints one combined
+# attribute x variant table per metric (Acc, ECE, AUSE, mean u by default).
+#
+# Outputs:
+#   <run dir>/summary_attribute_metrics.json          (per seed run)
+#   $BASE/attribute_eval_val.json / attribute_eval_test.json  (combined)
+#   plus the combined tables in this job's log file.
+#
+# Precondition: label_new/{val,test}.json sit alongside val/ and test/ in
+# $DATA, and the per-seed eval jobs have produced their result dirs.
+#
+# Submit with:
+#   sbatch scripts/attribute_eval_all.job
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+BASE=/home/ssuttorp/pretrained_models/edtc_fusion
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+cd $REPO
+
+srun --ntasks=1 python -u -m src.edtc_fusion.attribute_eval_all \
+    --base      $BASE \
+    --data_root $DATA \
+    --split     both \
+    --seeds     0 1 2
+
+echo ""
+echo "============================================================"
+echo "Attribute robustness evaluation complete."
+echo "Combined JSONs: $BASE/attribute_eval_{val,test}.json"
+echo "Combined attribute x variant tables are above in this log."
+echo "============================================================"

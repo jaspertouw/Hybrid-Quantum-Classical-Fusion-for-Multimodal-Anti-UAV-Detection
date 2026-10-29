@@ -1,0 +1,75 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=stage1_gauss_ir_seeds
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --array=0-1%1
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/stage1_gaussian_ir_seed_%A_%a.out
+
+# Phase 3.3 Stage 1g — Gaussian bbox head training: IR stream, multi-seed.
+#
+# Seed 0 = the existing evidential_ir_stage1g run, so this trains seeds 1 and 2.
+# Each seed starts from the matching clean detector best_clean_seed${SEED}.pt.
+# Precondition: train_yolo_clean_seeds.job has produced best_clean_seed{1,2}.pt.
+# Run stage2_evidential_ir_seeds.job after this completes.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+SEEDS=(1 2)
+SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+EVI=/home/ssuttorp/pretrained_models/evidential
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+mkdir -p $EVI
+mkdir -p $REPO/logs
+
+# Guard: confirm the seed's clean detector exists.
+if [ ! -f "/home/ssuttorp/pretrained_models/best_clean_seed${SEED}.pt" ]; then
+    echo "ERROR: best_clean_seed${SEED}.pt not found."
+    echo "Run train_yolo_clean_seeds.job first."
+    exit 1
+fi
+
+cd $EDTC
+
+echo "Stage 1g IR — seed=${SEED}"
+
+srun python -u lib/models/yolo_evidential/train_stage1_gaussian.py \
+    --weights       /home/ssuttorp/pretrained_models/best_clean_seed${SEED}.pt \
+    --data          $REPO/resources/EDTC/yolov5/data/antiuav_clean.yaml \
+    --train_txt     $DATA/train_ir_images.txt \
+    --val_txt       $DATA/val_ir_images.txt \
+    --save_dir      $EVI \
+    --name          evidential_ir_stage1g_seed${SEED} \
+    --device        0 \
+    --epochs        30 \
+    --warmup_epochs 5 \
+    --batch_size    64 \
+    --workers       8 \
+    --lr_phase_a    1e-3 \
+    --lr_phase_b    1e-4 \
+    --lambda_var    0.1 \
+    --K             2 \
+    --conf_thres    0.25 \
+    --iou_thres     0.45 \
+    --seed          $SEED \
+    --resume
+
+echo ""
+echo "Stage 1g IR seed=${SEED} complete."
+echo "Checkpoint : $EVI/evidential_ir_stage1g_seed${SEED}_last.pt"
+echo "Next step  : sbatch scripts/stage2_evidential_ir_seeds.job"

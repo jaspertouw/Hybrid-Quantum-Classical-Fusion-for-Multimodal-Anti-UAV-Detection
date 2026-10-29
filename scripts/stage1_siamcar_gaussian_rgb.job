@@ -1,0 +1,71 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=siamcar_stg1g_rgb
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/stage1_siamcar_gaussian_rgb_%A.out
+
+# Phase 4.3 Stage 1g — SiamCAR Gaussian localization head: RGB stream.
+#
+# Protocol:
+#   Phase A (5 epochs) : entire base frozen; train bbox_var (log-variance) only.
+#                        SGD lr=1e-3.  No validation — stabilise variance head init.
+#   Phase B (25 epochs): backbone frozen; neck+car_head+down+bbox_var train.
+#                        SGD lr=1e-4, CosineAnnealingLR.
+#
+# The evidential head is NOT part of this job (Stage 2 comes later).
+# Supports --resume: re-submit with same command if job is pre-empted.
+#
+# Starting checkpoint: siamcar_rgb_final.pth  (Phase 4.0 RGB fine-tune)
+# Output:
+#   /home/ssuttorp/pretrained_models/siamcar_gaussian/siamcar_rgb_stage1g_best.pth
+#   /home/ssuttorp/pretrained_models/siamcar_gaussian/siamcar_rgb_stage1g_history.csv
+#
+# Can run in parallel with stage1_siamcar_gaussian_ir.job (fully independent).
+# Prerequisite: train_siamcar_rgb.job must have completed.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+SIAMCAR=$REPO/resources/SiamCAR
+SNAP=/home/ssuttorp/pretrained_models/siamcar_gaussian
+
+export PYTHONPATH=$SIAMCAR:$PYTHONPATH
+
+mkdir -p $SNAP
+mkdir -p $REPO/logs
+
+cd $SIAMCAR
+
+srun python -u pysot/models/siamcar_gaussian/train_stage1_gaussian.py \
+    --cfg          experiments/siamcar_r50/config_antiuav_rgb.yaml \
+    --stage1_cfg   pysot/models/siamcar_gaussian/config_stage1.yaml \
+    --pretrained   /home/ssuttorp/pretrained_models/siamcar_rgb_final.pth \
+    --save_dir     $SNAP \
+    --name         siamcar_rgb_stage1g \
+    --epochs       30 \
+    --warmup_epochs 5 \
+    --lr_phase_a   1e-3 \
+    --lr_phase_b   1e-4 \
+    --weight_decay 1e-4 \
+    --momentum     0.9 \
+    --lambda_var   0.1 \
+    --grad_clip    10.0 \
+    --num_workers  8 \
+    --resume
+
+echo ""
+echo "Stage 1g RGB (SiamCAR) complete."
+echo "Best checkpoint : $SNAP/siamcar_rgb_stage1g_best.pth"
+echo "Training history: $SNAP/siamcar_rgb_stage1g_history.csv"
+echo ""
+echo "Next step: sbatch $REPO/scripts/stage2_siamcar_evidential_rgb.job"

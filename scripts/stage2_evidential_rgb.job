@@ -1,0 +1,73 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=stage2_evi_rgb
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=15:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/stage2_evidential_rgb_%A.out
+
+# Phase 3.3 Stage 2 — Evidential head training: RGB stream.
+#
+# Protocol:
+#   The entire Stage 1g network (backbone + neck + m + m_var) is FROZEN.
+#   Only m_evi (Dirichlet evidence head) is trained using EDL loss.
+#   KL regularisation weight anneals from 0 → 1 over 20 epochs.
+#   Numerical checks (verify.py) run every 5 epochs — output appears in this log.
+#
+# Precondition: stage1_gaussian_rgb.job must have completed.
+# Output:
+#   /home/ssuttorp/pretrained_models/evidential/evidential_rgb_stage2_best.pt
+#   /home/ssuttorp/pretrained_models/evidential/evidential_rgb_stage2_history.csv
+#
+# Can run in parallel with stage2_evidential_ir.job (fully independent).
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+EVI=/home/ssuttorp/pretrained_models/evidential
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+mkdir -p $REPO/logs
+
+# Guard: confirm Stage 1g checkpoint exists
+if [ ! -f "$EVI/evidential_rgb_stage1g_last.pt" ]; then
+    echo "ERROR: $EVI/evidential_rgb_stage1g_last.pt not found."
+    echo "Run stage1_gaussian_rgb.job first and confirm it completed successfully."
+    exit 1
+fi
+
+cd $EDTC
+
+srun python -u lib/models/yolo_evidential/train_stage2_evidential.py \
+    --stage1_checkpoint $EVI/evidential_rgb_stage1g_last.pt \
+    --base_weights      /home/ssuttorp/pretrained_models/best_clean_rgb.pt \
+    --data              $REPO/resources/EDTC/yolov5/data/antiuav_clean_rgb.yaml \
+    --train_txt         $DATA/train_rgb_images.txt \
+    --val_txt           $DATA/val_rgb_images.txt \
+    --save_dir          $EVI \
+    --name              evidential_rgb_stage2 \
+    --device            0 \
+    --epochs            20 \
+    --batch_size        64 \
+    --workers           8 \
+    --lr                1e-3 \
+    --lambda_evi        1.0 \
+    --K                 2 \
+    --check_every       5 \
+    --resume
+
+echo ""
+echo "Stage 2 evidential RGB complete."
+echo "Best checkpoint : $EVI/evidential_rgb_stage2_best.pt"
+echo "Training history: $EVI/evidential_rgb_stage2_history.csv"

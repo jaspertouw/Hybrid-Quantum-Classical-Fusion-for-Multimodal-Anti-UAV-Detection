@@ -1,0 +1,98 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=rescore_belief_metrics
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=00:30:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/rescore_belief_metrics_%A.out
+
+# Belief-quality (ECE / AUROC / AUSE) post-hoc rescoring across every run.
+# CPU-only workload — gpu_mig partition is used just for resource access.
+#
+# Writes summary_belief_metrics.json next to each run's summary.json.
+#
+# Submit with:
+#   sbatch scripts/rescore_belief_metrics_all.job
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+BASE=$PRETRAINED/edtc_fusion
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+cd $REPO
+
+# ── VAL split ────────────────────────────────────────────────────────────
+VAL=$DATA/val
+for D in \
+    "$BASE/val_results_single_ir_buav_logged" \
+    "$BASE/val_results_single_rgb_buav_logged" \
+    "$BASE/val_results_calibrated_cd0.550_ld0.035_ct0.529_lt0.564" \
+    "$BASE/val_results_abf_cd0.550_ld0.035_ct0.529_lt0.564" \
+    "$BASE/val_results_detector_only_ir_peak" \
+    "$BASE/val_results_detector_only_rgb_peak" \
+    "$BASE/val_results_detector_only_dbf_peak" \
+    "$BASE/val_results_detector_only_abf_peak" \
+    "$BASE/val_results_detector_only_naive_peak" \
+    "$BASE/val_results_detector_only_gated_peak" \
+    "$BASE/val_results_detector_only_dms"
+do
+    if [ -d "$D" ]; then
+        echo ""; echo "==> $D"
+        srun --ntasks=1 python -u -m src.edtc_fusion.rescore_belief_metrics \
+            --results_dir "$D" --dataset_root "$VAL"
+    else
+        echo "[skip] $D (missing)"
+    fi
+done
+
+# ── TEST split ───────────────────────────────────────────────────────────
+TEST=$DATA/test
+for D in \
+    "$BASE/test_results_single_ir" \
+    "$BASE/test_results_single_rgb" \
+    "$BASE/test_results_dbf" \
+    "$BASE/test_results_abf" \
+    "$BASE/test_results_detector_only_ir_peak" \
+    "$BASE/test_results_detector_only_rgb_peak" \
+    "$BASE/test_results_detector_only_dbf_peak" \
+    "$BASE/test_results_detector_only_abf_peak" \
+    "$BASE/test_results_detector_only_naive_peak" \
+    "$BASE/test_results_detector_only_gated_peak" \
+    "$BASE/test_results_detector_only_dms"
+do
+    if [ -d "$D" ]; then
+        echo ""; echo "==> $D"
+        srun --ntasks=1 python -u -m src.edtc_fusion.rescore_belief_metrics \
+            --results_dir "$D" --dataset_root "$TEST"
+    else
+        echo "[skip] $D (missing)"
+    fi
+done
+
+echo ""
+echo "============================================================"
+echo "Belief-quality rescoring complete."
+echo "Each run dir now contains:"
+echo "  summary.json                  (paper-formula Acc)"
+echo "  summary_belief_metrics.json   (ECE / AUROC / AUSE per signal,"
+echo "                                 + AP@0.5 / mAP@[0.5:0.95] detection AP)"
+echo "============================================================"
+
+# ── Cross-run comparison tables (val + test) ─────────────────────────────
+# Just JSON reads — no heavy compute. Uses the same env we already activated.
+echo ""
+echo "============================================================"
+echo "Cross-run comparison tables"
+echo "============================================================"
+python -u -m src.edtc_fusion.print_metrics_tables \
+    --pretrained $PRETRAINED

@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=plot_belief_curves
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=00:45:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/plot_belief_curves_%A.out
+
+# Reliability + sparsification (belief & sigma2) figures for the DET-ONLY runs.
+# CPU-only workload (matplotlib Agg, no model loads) — no GPU requested.
+# If the 'genoa' CPU partition is unavailable in your account, switch the
+# --partition above to gpu_a100 and add '#SBATCH --gpus=1' (it still won't use
+# the GPU, but matches the rescore job's proven resource access).
+#
+# Reads each run's <seq>.txt / <seq>_log.csv and writes 6 PNGs to BASE/figures:
+#   reliability_{val,test}.png
+#   sparsification_belief_{val,test}.png
+#   sparsification_sigma_{val,test}.png   <- DMS run appears here
+#
+# Submit with:
+#   sbatch scripts/plot_belief_curves.job
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+cd $REPO
+
+srun --ntasks=1 python -u -m src.edtc_fusion.plot_belief_curves \
+    --pretrained "$PRETRAINED" \
+    --val_root   "$DATA/val" \
+    --test_root  "$DATA/test"
+
+echo ""
+echo "============================================================"
+echo "Belief-curve figures written to:"
+echo "  $PRETRAINED/edtc_fusion/figures/"
+echo "============================================================"

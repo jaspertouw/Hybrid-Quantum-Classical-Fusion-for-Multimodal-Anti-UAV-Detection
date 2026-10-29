@@ -1,0 +1,28 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=prepare_yolo_labels
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=02:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/prepare_yolo_labels_%A.out
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+
+export PYTHONPATH=$REPO:$PYTHONPATH
+
+cd $REPO
+
+# Convert IR JSON annotations to YOLO .txt labels for train and val splits.
+# The test split is NOT converted — it is only used by run_eval.job.
+srun python scripts/prepare_yolo_labels.py --splits train val
+
+echo "Label preparation complete."

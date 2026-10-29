@@ -1,0 +1,41 @@
+# EDTC dependencies for Snellius
+# PyTorch is installed separately in install_env.job with the correct CUDA wheels
+# (pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu124)
+
+# Core EDTC requirements (from resources/EDTC/install_pytorch17.sh)
+PyYAML
+easydict
+cython
+opencv-python
+pandas
+tqdm
+pycocotools
+jpeg4py
+tensorboard
+tikzplotlib
+colorama
+lmdb
+scipy
+scikit-learn
+# visdom removed — legacy build system breaks on modern pip; tensorboard covers the same use case
+onnx
+onnxruntime-gpu
+timm==0.6.12          # 0.3.2 (original) is broken on PyTorch 2.x; 0.6.x has same API surface
+yacs
+einops
+thop
+ninja                  # required to compile external/PreciseRoIPooling
+psutil
+seaborn
+
+# YOLOv5 requirements (from resources/EDTC/yolov5/requirements.txt)
+matplotlib>=3.2.2
+numpy>=1.18.5
+Pillow>=7.1.2
+requests>=2.23.0
+gitpython
+
+# Notebook / development tools
+ipython
+notebook
+jupyterlab

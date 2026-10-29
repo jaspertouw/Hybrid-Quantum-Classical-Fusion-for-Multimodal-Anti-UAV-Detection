@@ -1,0 +1,58 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=edtc_single_ir
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/edtc_single_ir_%A.out
+
+# Single-modality (thermal-only) EDTC baseline — b_uav logging run.
+# YOLO IR -> SiamCAR IR with the same two-state EDTC switching logic,
+# operating on a single stream's u and per-box-normalised sigma2 (no DBF/ABF, no DMS).
+# b_uav (belief mass for UAV class from the single evidential head) is now
+# also logged per frame for separability analysis alongside u and sigma2.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/val_results_single_ir_buav_logged
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_edtc_single \
+    --modality            ir \
+    --dataset_root        $DATA/val \
+    --results_dir         $RESULTS \
+    --yolo                $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_base           $PRETRAINED/best_clean.pt \
+    --siam_stage2         $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_stage1         $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_pretrained     $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_cfg            $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --theta_cls_detect    0.680 \
+    --theta_loc_detect    0.060 \
+    --theta_cls_track     0.200 \
+    --theta_loc_track     0.500
+
+echo ""
+echo "EDTC single-modality (IR) b_uav logging run complete."
+echo "NOTE: logs now contain b_uav column (belief mass for UAV class) for separability analysis."
+echo "Per-sequence results : $RESULTS/<seq>.txt"
+echo "Per-frame logs       : $RESULTS/<seq>_log.csv"
+echo "Aggregate summary    : $RESULTS/summary.json"
+echo "Acc metric           : failure_iou_thresh=1e-5  penalty_denom=T_total (not T*)  [matches EDTC eval script]"

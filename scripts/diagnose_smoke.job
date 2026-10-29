@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=diagnose_smoke
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=00:05:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/diagnose_smoke_%A.out
+
+# Diagnose why the smoke-test Acc = -0.2000.
+# Reads the already-produced prediction .txt and the IR_label.json GT,
+# prints per-frame IoU, centroid displacement, and a diagnosis summary.
+#
+# No GPU needed — this is pure Python analysis.  The gpu_a100 partition is
+# used only to avoid the CPU-only queue wait.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+SMOKE=$PRETRAINED/edtc_fusion/smoke
+
+export PYTHONPATH=$REPO:$PYTHONPATH
+
+# Auto-detect the sequence that was used in the smoke test
+SEQ=$(head -n 1 $DATA/val/list.txt | tr -d '[:space:]')
+echo "Diagnosing sequence: $SEQ"
+echo ""
+
+echo "============================================================"
+echo "  Pass 1: DMS-selected predictions vs IR GT"
+echo "============================================================"
+python -u $REPO/scripts/diagnose_smoke.py \
+    --pred_dir   $SMOKE \
+    --data_root  $DATA/val \
+    --sequence   $SEQ \
+    --log_csv    $SMOKE/${SEQ}_log.csv \
+    --show_n     30
+
+echo ""
+echo "============================================================"
+echo "  Pass 2: IR-only predictions vs IR GT  (pred_suffix=_ir)"
+echo "============================================================"
+python -u $REPO/scripts/diagnose_smoke.py \
+    --pred_dir   $SMOKE \
+    --pred_suffix _ir \
+    --data_root  $DATA/val \
+    --sequence   $SEQ \
+    --log_csv    $SMOKE/${SEQ}_log.csv \
+    --show_n     30

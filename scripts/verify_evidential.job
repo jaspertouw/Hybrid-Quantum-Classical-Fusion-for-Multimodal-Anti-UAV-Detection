@@ -1,0 +1,69 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=verify_evidential
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=01:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/verify_evidential_%A.out
+
+# Phase 3.3 — Pre-training numerical verification.
+#
+# Confirms that both IR and RGB EvidentialYOLO models build correctly from
+# their pretrained checkpoints and that the initial outputs satisfy the
+# theoretical guarantees:
+#
+#   - e_k >= 0      (ReLU guarantee)
+#   - u in (0, 1]   (uncertainty mass)
+#   - sum(b_k) + u = 1
+#   - sigma^2 > 0
+#
+# At initialisation (before any training), expect u_mean ~ 0.9, which is
+# CORRECT behaviour (uninformative prior = high uncertainty = new heads not
+# yet trained).  A u_mean near 0 at this stage would indicate a bug.
+#
+# Run this job before stage1_ir.job and stage1_rgb.job.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+cd $EDTC
+
+# Pick the first sequence from the val list as sample image dir
+IR_SEQ=$(head -1 $DATA/val_ir_images.txt | xargs dirname)
+RGB_SEQ=$(head -1 $DATA/val_rgb_images.txt | xargs dirname)
+
+echo "=== IR stream verification ==="
+srun python lib/models/yolo_evidential/verify.py \
+    --weights /home/ssuttorp/pretrained_models/best_clean.pt \
+    --data    $REPO/resources/EDTC/yolov5/data/antiuav_clean.yaml \
+    --img_dir $IR_SEQ \
+    --n       8 \
+    --device  0 \
+    --K       2
+
+echo ""
+echo "=== RGB stream verification ==="
+srun python lib/models/yolo_evidential/verify.py \
+    --weights /home/ssuttorp/pretrained_models/best_clean_rgb.pt \
+    --data    $REPO/resources/EDTC/yolov5/data/antiuav_clean_rgb.yaml \
+    --img_dir $RGB_SEQ \
+    --n       8 \
+    --device  0 \
+    --K       2
+
+echo ""
+echo "Verification complete. Review [OK]/[WARN]/[FAIL] lines above."
+echo "Expected at initialisation: u_mean ~ 0.9 (uninformative), e_min >= 0, sigma^2 > 0."

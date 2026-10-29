@@ -1,0 +1,75 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=test_detector_naive_vacuous
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --array=0-2%1
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/test_detector_only_naive_vacuous_seed_%A_%a.out
+
+# TEST SET — Detector-only Naive Late Fusion with the corrected
+# missing-detection encoding (--miss_belief vacuous: b=(0,0), u=1).
+# Companion to test_detector_only_naive(_seeds).job.
+#
+# theta_cls = 0.55 — recalibrated on the vacuous val sweep
+# (calibration_detonly_naive_peak_vacuous_seed{0,1,2}).  Under the vacuous
+# encoding naive's u_fused = 1 - b_uav_avg is ~0.505 on one-stream-miss
+# frames (one vacuous stream), so the legacy theta=0.5 strict gate would
+# suppress exactly those frames and reproduce the old behaviour.  The val
+# sweep plateaus at Acc = ABF level for every theta in [0.55, 0.95];
+# 0.55 is the sweep's BEST per the calibrate-on-val protocol.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+SEED=$SLURM_ARRAY_TASK_ID
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/test_results_detector_only_naive_peak_vacuous_seed${SEED}
+THETA_CLS=0.55
+
+# Seed 0 checkpoints carry no seed suffix (original run); seeds 1-2 do.
+if [ "$SEED" -eq 0 ]; then
+  YOLO_IR=$PRETRAINED/evidential/evidential_ir_stage2_best.pt
+  YOLO_IR_BASE=$PRETRAINED/best_clean.pt
+  YOLO_RGB=$PRETRAINED/evidential/evidential_rgb_stage2_best.pt
+  YOLO_RGB_BASE=$PRETRAINED/best_clean_rgb.pt
+else
+  YOLO_IR=$PRETRAINED/evidential/evidential_ir_stage2_seed${SEED}_best.pt
+  YOLO_IR_BASE=$PRETRAINED/best_clean_seed${SEED}.pt
+  YOLO_RGB=$PRETRAINED/evidential/evidential_rgb_stage2_seed${SEED}_best.pt
+  YOLO_RGB_BASE=$PRETRAINED/best_clean_rgb_seed${SEED}.pt
+fi
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+echo "TEST Detector-only Naive (vacuous miss encoding) eval — seed=${SEED}"
+
+srun python -u -m src.edtc_fusion.run_detector_only \
+    --mode          naive \
+    --dataset_root  $DATA/test \
+    --results_dir   $RESULTS \
+    --unc_agg       peak \
+    --miss_belief   vacuous \
+    --yolo_ir       $YOLO_IR \
+    --yolo_ir_base  $YOLO_IR_BASE \
+    --yolo_rgb      $YOLO_RGB \
+    --yolo_rgb_base $YOLO_RGB_BASE \
+    --theta_cls     $THETA_CLS
+
+echo ""
+echo "TEST Naive (vacuous) seed=${SEED} complete. Summary: $RESULTS/summary.json"

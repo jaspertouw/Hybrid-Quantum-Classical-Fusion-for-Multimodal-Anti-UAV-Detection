@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=siamcar_rgb
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/siamcar_rgb_%A.out
+
+# Fine-tunes SiamCAR (ResNet-50 backbone) on Anti-UAV visible (RGB) sequences.
+#
+# Freeze/unfreeze schedule (BACKBONE.TRAIN_EPOCH=10 in config):
+#   Epochs  1-10 : backbone frozen; neck + CAR head train at base_lr=1e-3
+#   Epochs 11-20 : layer2 / layer3 / layer4 unfreeze; backbone_lr=1e-4
+#
+# Starting weights : resources/SiamCAR/pretrained_models/resnet50.model
+# Input data       : /home/ssuttorp/Anti-UAV-RGBT/train  (pre-extracted RGB frames)
+# Output           : /home/ssuttorp/pretrained_models/siamcar_rgb/checkpoint_e20.pth
+#                    (RGB tracking baseline checkpoint)
+#
+# Prerequisite: preprocess_trainval.job must have run on the train split.
+# Next step   : sbatch scripts/eval_siamcar_rgb.job
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+SIAMCAR=$REPO/resources/SiamCAR
+
+export PYTHONPATH=$SIAMCAR:$PYTHONPATH
+
+mkdir -p /home/ssuttorp/pretrained_models/siamcar_rgb
+mkdir -p $REPO/logs
+
+cd $SIAMCAR/tools
+
+srun python -u train.py \
+    --cfg ../experiments/siamcar_r50/config_antiuav_rgb.yaml
+
+# SiamCAR saves at epoch *transitions*, so last file is e19 not e20.
+cp /home/ssuttorp/pretrained_models/siamcar_rgb/checkpoint_e19.pth \
+   /home/ssuttorp/pretrained_models/siamcar_rgb_final.pth
+
+echo ""
+echo "SiamCAR RGB fine-tuning complete."
+echo "Epoch checkpoints : /home/ssuttorp/pretrained_models/siamcar_rgb/"
+echo "Baseline (final)  : /home/ssuttorp/pretrained_models/siamcar_rgb_final.pth"
+echo ""
+echo "Next step: sbatch $REPO/scripts/eval_siamcar_rgb.job"

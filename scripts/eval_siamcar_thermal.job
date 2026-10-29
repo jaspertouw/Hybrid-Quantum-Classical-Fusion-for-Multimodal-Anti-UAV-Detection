@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=eval_siamcar_thermal
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/eval_siamcar_thermal_%A.out
+
+# Evaluates the SiamCAR thermal baseline on the Anti-UAV validation split.
+#
+# Metric  : EDTC Acc(α=0.2) and EDTC Acc(β=0.3)
+#   Acc(t) = mean over sequences of:
+#            (#frames with IoU(pred,gt) >= t AND target present)
+#            / (#frames with target present)
+#
+# Input   : /home/ssuttorp/pretrained_models/siamcar_thermal/checkpoint_e20.pth
+#           /home/ssuttorp/Anti-UAV-RGBT/val  (pre-extracted IR frames)
+# Output  : /home/ssuttorp/pretrained_models/siamcar_thermal/val_results/
+#             summary.json          — Acc(α) Acc(β) logged here
+#             <seq_name>.txt        — per-sequence predicted bboxes (x,y,w,h)
+#
+# Prerequisite: train_siamcar_thermal.job must have completed.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+SIAMCAR=$REPO/resources/SiamCAR
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+CKPT=/home/ssuttorp/pretrained_models/siamcar_thermal_final.pth
+RESULTS=/home/ssuttorp/pretrained_models/siamcar_thermal/val_results
+
+export PYTHONPATH=$SIAMCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $SIAMCAR/tools
+
+srun python -u eval_antiuav_thermal.py \
+    --snapshot     $CKPT \
+    --config       ../experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --dataset_root $DATA/val \
+    --results_dir  $RESULTS
+
+echo ""
+echo "Evaluation complete."
+echo "EDTC Acc results : $RESULTS/summary.json"
+echo "Per-sequence txts: $RESULTS/<seq>.txt"
+echo "Acc metric       : failure_iou_thresh=1e-5  penalty_denom=T_total (not T*)  [matches EDTC eval script]"

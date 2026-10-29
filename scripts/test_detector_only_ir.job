@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=test_detector_ir
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/test_detector_only_ir_%A.out
+
+# TEST SET EVALUATION — Detector-only IR baseline (YOLO thermal only).
+# No SiamCAR, no DETECT/TRACK switching, no thresholds to lock.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/test_results_detector_only_ir_peak
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_detector_only \
+    --mode          ir \
+    --dataset_root  $DATA/test \
+    --results_dir   $RESULTS \
+    --unc_agg       peak \
+    --yolo_ir       $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_ir_base  $PRETRAINED/best_clean.pt
+
+echo ""
+echo "============================================================"
+echo "  TEST SET EVALUATION COMPLETE — Detector-only IR"
+echo "  Split   : TEST"
+echo "  Summary : $RESULTS/summary.json"
+echo "  Acc     : failure_iou_thresh=1e-5  penalty_denom=T_total"
+echo "============================================================"

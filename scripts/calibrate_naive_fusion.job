@@ -1,0 +1,56 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=01:00:00
+#SBATCH --job-name=calib_naive
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/calib_naive_%A.out
+
+# Offline threshold calibration for the Naive Late Fusion baseline.
+#
+# Prerequisite: eval_naive_fusion.job must have been run first so that
+# *_log.csv files exist in $LOG_DIR.
+#
+# Workflow (same two-pass approach as DBF calibration):
+#   Pass 1 — run this script to sweep the DETECT pair, fix TRACK at defaults.
+#   Pass 2 — re-run with best cls_d / loc_d fixed, sweep TRACK pair.
+#   Then submit eval_naive_fusion_calibrated.job with the chosen 4-tuple.
+#
+# Note: pseudo_u = 1 - p_fused_UAV is logged as "u_fused" in the CSV, so
+# calibrate_thresholds_offline.py reads it without modification.  Its
+# numerical range differs from the DBF u_fused, hence the wider sweep below.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+LOG_DIR=/home/ssuttorp/pretrained_models/naive_fusion/val_results
+OUT_DIR=/home/ssuttorp/pretrained_models/naive_fusion/calibration
+
+mkdir -p $OUT_DIR
+mkdir -p $REPO/logs
+
+cd $REPO
+
+# Pass 1: sweep DETECT pair (wider range — pseudo_u distribution differs from DBF)
+python scripts/calibrate_thresholds_offline.py \
+    --log_dir      $LOG_DIR \
+    --dataset_root $DATA/val \
+    --out_dir      $OUT_DIR \
+    --theta_cls_detect 0.60 0.65 0.70 0.75 0.80 0.85 0.90 \
+    --theta_loc_detect 0.04 0.06 0.08 0.10 0.12 0.15 \
+    --theta_cls_track  0.90 \
+    --theta_loc_track  0.70 \
+    --rank_by      acc_ir \
+    --top_k        10
+
+echo ""
+echo "Pass 1 complete.  Top candidates -> $OUT_DIR/top10_candidates.json"
+echo "Pick best cls_d / loc_d, then re-run with those fixed and sweep TRACK pair."

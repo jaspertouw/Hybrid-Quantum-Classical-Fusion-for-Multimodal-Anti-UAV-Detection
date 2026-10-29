@@ -1,0 +1,80 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=test_detonly_dbf_lamsweep
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --array=0-4
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/test_detector_only_dbf_lamsweep_%A_%a.out
+
+# Detector-only DBF lambda sweep — TEST stage.
+# One array task per lambda (0.25 0.5 1.0 2.0 4.0).  Dual YOLO + DBF belief
+# fusion + DMS box selection on TEST.  Acc is Option-B (DMS-aware).
+#
+# theta_cls: defaults below to 0.5 per lambda, matching the lam=1.0 finding that
+# theta_cls is inert in [0.05, 0.95] under peak aggregation.  After running
+# calibrate_detonly_dbf_lamsweep.job, set USE_CALIBRATED=1 to instead read the
+# per-lambda best theta from theta_sweep.json (requires `jq` on the node).
+#
+# Final lambda selection: compare VAL summary.json across lambdas to pick the
+# best lambda, then report that lambda's TEST summary here.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+# --- lambda grid (must match eval/calibrate sweep jobs) ---
+LAMS=(0.25 0.5 1.0 2.0 4.0)
+LAM=${LAMS[$SLURM_ARRAY_TASK_ID]}
+TAG=${LAM/./p}
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/test_results_detector_only_dbf_peak_lam$TAG
+CALIB_DIR=$PRETRAINED/edtc_fusion/calibration_detonly_dbf_peak_lam$TAG
+
+# Set to 1 to read the per-lambda calibrated theta_cls from theta_sweep.json;
+# otherwise use the inert-plateau default of 0.5.
+USE_CALIBRATED=0
+THETA_CLS=0.5
+if [ "$USE_CALIBRATED" = "1" ] && [ -f "$CALIB_DIR/theta_sweep.json" ]; then
+    THETA_CLS=$(jq -r '.best.theta_cls' "$CALIB_DIR/theta_sweep.json")
+    echo "Using calibrated theta_cls=$THETA_CLS from $CALIB_DIR/theta_sweep.json"
+fi
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+echo "=== DBF lambda sweep [TEST]  lam=$LAM  tag=$TAG  theta_cls=$THETA_CLS ==="
+
+srun python -u -m src.edtc_fusion.run_detector_only \
+    --mode          dbf \
+    --dataset_root  $DATA/test \
+    --results_dir   $RESULTS \
+    --unc_agg       peak \
+    --yolo_ir       $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_ir_base  $PRETRAINED/best_clean.pt \
+    --yolo_rgb      $PRETRAINED/evidential/evidential_rgb_stage2_best.pt \
+    --yolo_rgb_base $PRETRAINED/best_clean_rgb.pt \
+    --fusion        dbf \
+    --lam           $LAM \
+    --theta_cls     $THETA_CLS
+
+echo ""
+echo "============================================================"
+echo "  TEST EVALUATION COMPLETE — Detector-only DBF  lam=$LAM"
+echo "  Split   : TEST"
+echo "  Summary : $RESULTS/summary.json"
+echo "  Acc     : DMS-aware (Option-B)"
+echo "============================================================"

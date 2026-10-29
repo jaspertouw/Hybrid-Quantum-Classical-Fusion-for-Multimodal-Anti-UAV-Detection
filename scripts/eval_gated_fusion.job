@@ -1,0 +1,70 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=gated_fusion
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/gated_fusion_%A.out
+
+# Baseline 5.4b — Gated Fusion evaluation on the full val split.
+#
+# Requires a trained gate checkpoint — run train_gate.job first.
+#
+# Fusion rule (detection + tracking):
+#   g        = sigmoid( MLP( cat([b_rgb, b_ir]) ) )   learned scalar gate
+#   b_gated  = g * b_rgb + (1-g) * b_ir
+#   pseudo_u = 1 - b_gated[UAV]                       (switching signal)
+#
+# Everything else (YOLO inference, SiamCAR, DMS, state machine, thresholds)
+# is identical to eval_edtc_fusion_calibrated.job.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+GATE=$PRETRAINED/gated_fusion/gate_best.pth
+RESULTS=$PRETRAINED/gated_fusion/val_results
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_gated_fusion \
+    --gate_weights        $GATE \
+    --dataset_root        $DATA/val \
+    --results_dir         $RESULTS \
+    --yolo_ir             $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_rgb            $PRETRAINED/evidential/evidential_rgb_stage2_best.pt \
+    --yolo_ir_base        $PRETRAINED/best_clean.pt \
+    --yolo_rgb_base       $PRETRAINED/best_clean_rgb.pt \
+    --siam_ir_stage2      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_rgb_stage2     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage2_best.pth \
+    --siam_ir_stage1      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_rgb_stage1     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage1g_best.pth \
+    --siam_ir_pretrained  $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_rgb_pretrained $PRETRAINED/siamcar_rgb_final.pth \
+    --siam_ir_cfg         $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --siam_rgb_cfg        $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_rgb.yaml \
+    --theta_cls_detect    0.80 \
+    --theta_loc_detect    0.10 \
+    --theta_cls_track     0.90 \
+    --theta_loc_track     0.70
+
+echo ""
+echo "Gated Fusion evaluation complete."
+echo "Per-sequence results : $RESULTS/<seq>.txt"
+echo "Per-frame logs       : $RESULTS/<seq>_log.csv"
+echo "Aggregate summary    : $RESULTS/summary.json"
+echo "Acc metric           : failure_iou_thresh=1e-5  penalty_denom=T_total (not T*)  [matches EDTC eval script]"

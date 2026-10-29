@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=stage1_gauss_ir
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/stage1_gaussian_ir_%A.out
+
+# Phase 3.3 Stage 1g — Gaussian bbox head training: IR stream.
+#
+# Protocol:
+#   Phase A (5 epochs) : backbone + neck frozen, train m_var (log-variance) only.
+#   Phase B (25 epochs): m_evi frozen, all else (backbone+neck+m+m_var) trains.
+#
+# The evidential head (m_evi) is NEVER touched during this job.
+# Run stage2_evidential_ir.job after this job completes.
+#
+# Starting checkpoint: best_clean.pt   (Phase 3.0 IR Anti-UAV fine-tune)
+# Output:
+#   /home/ssuttorp/pretrained_models/evidential/evidential_ir_stage1g_best.pt
+#   /home/ssuttorp/pretrained_models/evidential/evidential_ir_stage1g_history.csv
+#
+# Can run in parallel with stage1_gaussian_rgb.job (fully independent).
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+EVI=/home/ssuttorp/pretrained_models/evidential
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+mkdir -p $EVI
+mkdir -p $REPO/logs
+
+cd $EDTC
+
+srun python -u lib/models/yolo_evidential/train_stage1_gaussian.py \
+    --weights       /home/ssuttorp/pretrained_models/best_clean.pt \
+    --data          $REPO/resources/EDTC/yolov5/data/antiuav_clean.yaml \
+    --train_txt     $DATA/train_ir_images.txt \
+    --val_txt       $DATA/val_ir_images.txt \
+    --save_dir      $EVI \
+    --name          evidential_ir_stage1g \
+    --device        0 \
+    --epochs        30 \
+    --warmup_epochs 5 \
+    --batch_size    64 \
+    --workers       8 \
+    --lr_phase_a    1e-3 \
+    --lr_phase_b    1e-4 \
+    --lambda_var    0.1 \
+    --K             2 \
+    --conf_thres    0.25 \
+    --iou_thres     0.45 \
+    --resume
+
+echo ""
+echo "Stage 1g IR complete."
+echo "Best checkpoint : $EVI/evidential_ir_stage1g_best.pt"
+echo "Training history: $EVI/evidential_ir_stage1g_history.csv"
+echo ""
+echo "Next step: sbatch scripts/stage2_evidential_ir.job"

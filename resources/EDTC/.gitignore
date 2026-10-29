@@ -1,0 +1,8 @@
+*.idea
+*~
+*__pycache__*
+*.pyc
+*.pytest_cache
+*.csv
+# local.py and data/ removed from gitignore — these are now tracked as part of the thesis repo
+# (original EDTC excluded them as machine-specific, but here they are intentional project files)

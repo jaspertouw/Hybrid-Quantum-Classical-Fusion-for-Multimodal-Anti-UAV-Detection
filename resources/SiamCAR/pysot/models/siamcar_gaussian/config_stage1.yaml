@@ -1,0 +1,11 @@
+# Stage 1 Gaussian variance head training — overrides for config.yaml
+# Merge after the base config: cfg.merge_from_file(base); cfg.merge_from_file(this)
+
+TRAIN:
+    EPOCH: 30
+    BATCH_SIZE: 64
+    BASE_LR: 0.0001
+    GRAD_CLIP: 10.0
+
+BACKBONE:
+    TRAIN_EPOCH: 999  # disable built-in backbone unfreeze logic inside train.py

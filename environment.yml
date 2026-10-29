@@ -1,0 +1,46 @@
+name: thesis2026
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  # 'defaults' removed — pkgs/main and pkgs/r require Anaconda TOS acceptance
+  # all packages below are available on conda-forge / pytorch / nvidia
+dependencies:
+  - python=3.9
+  - pip=24.2.0
+  - pytorch=2.1.0
+  - torchvision=0.16.0
+  - pytorch-cuda=12.1
+  - tqdm
+  - libjpeg-turbo          # C library required by jpeg4py (replaces apt-get install libturbojpeg)
+  - ninja                  # required to compile external/PreciseRoIPooling
+  - pip:
+    - PyYAML
+    - easydict
+    - cython
+    - opencv-python
+    - pandas
+    - pycocotools
+    - jpeg4py
+    - tensorboard
+    - tikzplotlib
+    - colorama
+    - lmdb
+    - scipy
+    - visdom
+    - onnx
+    - onnxruntime-gpu
+    - timm==0.6.12          # 0.3.2 (original) is broken on PyTorch 2.x; 0.6.x has same API surface
+    - yacs
+    - einops
+    - thop
+    - psutil
+    - seaborn
+    - matplotlib
+    - numpy
+    - Pillow
+    - requests
+    - gitpython
+    - ipython
+    - notebook
+    - jupyterlab

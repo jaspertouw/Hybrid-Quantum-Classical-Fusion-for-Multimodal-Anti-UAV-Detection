@@ -1,0 +1,85 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_gate
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=16:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/train_gate_%A.out
+
+# Baseline 5.4b — Gate MLP training for Gated Fusion.
+#
+# Two-phase strategy (no switching thresholds involved):
+#
+#   Phase 1 — Feature extraction  (runs ONCE on the full train + val splits):
+#       Run both frozen YOLOs/SiamCAR on every frame and cache belief vectors
+#       in memory as (b_rgb, b_ir, label) tuples.
+#
+#   Phase 2 — Gate training  (batched, very fast — < 1 min for 20 epochs):
+#       Train the ~100-param MLP on the cached tensors with DataLoader.
+#       No backbone inference during training.
+#
+# Run this BEFORE eval_gated_fusion.job.
+# Output checkpoint: $PRETRAINED/gated_fusion/gate_best.pth
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+GATE_OUT=$PRETRAINED/gated_fusion/gate_best.pth
+CACHE_DIR=$PRETRAINED/gated_fusion/belief_cache
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $PRETRAINED/gated_fusion
+mkdir -p $REPO/logs
+
+cd $REPO
+
+EPOCHS=20
+LR=1e-3
+BATCH_SIZE=256
+
+echo "============================================================"
+echo "Gate MLP training"
+echo "  epochs     : $EPOCHS"
+echo "  lr         : $LR"
+echo "  batch_size : $BATCH_SIZE"
+echo "  train_root : $DATA/train"
+echo "  val_root   : $DATA/val"
+echo "  gate_out   : $GATE_OUT"
+echo "  cache_dir  : $CACHE_DIR  (per-seq .npz — resume-safe)"
+echo "============================================================"
+echo ""
+
+srun python -u -m src.edtc_fusion.train_gate \
+    --train_root          $DATA/train \
+    --val_root            $DATA/val \
+    --gate_out            $GATE_OUT \
+    --epochs              $EPOCHS \
+    --lr                  $LR \
+    --batch_size          $BATCH_SIZE \
+    --yolo_ir             $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_rgb            $PRETRAINED/evidential/evidential_rgb_stage2_best.pt \
+    --yolo_ir_base        $PRETRAINED/best_clean.pt \
+    --yolo_rgb_base       $PRETRAINED/best_clean_rgb.pt \
+    --siam_ir_stage2      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_rgb_stage2     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage2_best.pth \
+    --siam_ir_stage1      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_rgb_stage1     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage1g_best.pth \
+    --siam_ir_pretrained  $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_rgb_pretrained $PRETRAINED/siamcar_rgb_final.pth \
+    --siam_ir_cfg         $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --siam_rgb_cfg        $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_rgb.yaml
+
+echo ""
+echo "Gate training complete."
+echo "Best checkpoint : $GATE_OUT"

@@ -1,0 +1,102 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=rescore_belief_seeds
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=00:45:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/rescore_belief_seeds_%A.out
+
+# Belief-quality (ECE / AUROC / AUSE) post-hoc rescoring for the per-seed
+# detector-only runs (seeds 1 and 2).  CPU-only workload.
+# Writes summary_belief_metrics.json next to each run's summary.json.
+#
+# Precondition: the per-seed eval jobs have produced their result dirs:
+#   eval_detector_only_{ir,rgb,dbf,abf,naive,gated,dms}_seeds.job
+#
+# Submit with:
+#   sbatch scripts/rescore_belief_metrics_seeds.job
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+BASE=$PRETRAINED/edtc_fusion
+VAL=$DATA/val
+TEST=$DATA/test
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+cd $REPO
+
+for SEED in 1 2; do
+    echo ""
+    echo "############################################################"
+    echo "# SEED ${SEED}"
+    echo "############################################################"
+
+    # ── VAL split ────────────────────────────────────────────────────────
+    for D in \
+        "$BASE/val_results_detector_only_ir_seed${SEED}" \
+        "$BASE/val_results_detector_only_rgb_seed${SEED}" \
+        "$BASE/val_results_detector_only_dbf_peak_seed${SEED}" \
+        "$BASE/val_results_detector_only_abf_peak_seed${SEED}" \
+        "$BASE/val_results_detector_only_naive_peak_seed${SEED}" \
+        "$BASE/val_results_detector_only_gated_peak_seed${SEED}" \
+        "$BASE/val_results_detector_only_dms_seed${SEED}"
+    do
+        if [ -d "$D" ]; then
+            echo ""; echo "==> $D"
+            srun --ntasks=1 python -u -m src.edtc_fusion.rescore_belief_metrics \
+                --results_dir "$D" --dataset_root "$VAL"
+        else
+            echo "[skip] $D (missing)"
+        fi
+    done
+
+    # ── TEST split ───────────────────────────────────────────────────────
+    for D in \
+        "$BASE/test_results_detector_only_ir_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_rgb_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_dbf_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_abf_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_naive_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_gated_peak_seed${SEED}" \
+        "$BASE/test_results_detector_only_dms_seed${SEED}"
+    do
+        if [ -d "$D" ]; then
+            echo ""; echo "==> $D"
+            srun --ntasks=1 python -u -m src.edtc_fusion.rescore_belief_metrics \
+                --results_dir "$D" --dataset_root "$TEST"
+        else
+            echo "[skip] $D (missing)"
+        fi
+    done
+done
+
+echo ""
+echo "============================================================"
+echo "Per-seed belief-quality rescoring complete."
+echo "Each seed run dir now contains:"
+echo "  summary.json                  (paper-formula Acc)"
+echo "  summary_belief_metrics.json   (ECE / AUROC / AUSE per signal,"
+echo "                                 + AP@0.5 / mAP@[0.5:0.95] detection AP)"
+echo "Aggregate mean+/-std across seeds {0,1,2} in your analysis notebook/script."
+echo "============================================================"
+
+# ── Cross-run comparison tables (per seed: val + test) ───────────────────
+# Just JSON reads — no heavy compute. Uses the same env we already activated.
+# Seed 0 lives in rescore_belief_metrics_all.job's table; here we print 1 & 2.
+echo ""
+echo "============================================================"
+echo "Cross-run comparison tables — seeds 1, 2"
+echo "============================================================"
+python -u -m src.edtc_fusion.print_metrics_tables \
+    --pretrained $PRETRAINED \
+    --seed 1 2

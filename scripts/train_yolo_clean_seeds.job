@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_yolo_clean_seeds
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --array=0-1%1
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/train_yolo_clean_seed_%A_%a.out
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+# Map the SLURM array index to a training seed.
+# Seed 0 = the existing best_clean.pt run (train.py defaulted to --seed 0),
+# so we only train the two new seeds here.
+SEEDS=(1 2)
+SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+RUN_NAME=antiuav_clean_seed${SEED}
+CHECKPOINT=$EDTC/yolov5/runs/train/${RUN_NAME}/weights/last.pt
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+cd $EDTC/yolov5
+
+echo "Training IR detector with seed=${SEED} (run: ${RUN_NAME})"
+
+# Resume from last checkpoint if one exists (e.g. after a timeout or manual cancel),
+# otherwise start fresh from COCO pretrained weights.
+# Note: --resume restores --data/--weights/--epochs/--seed from the saved checkpoint,
+# so the original config and seed are preserved automatically.
+if [ -f "$CHECKPOINT" ]; then
+    echo "Resuming from $CHECKPOINT"
+    # Cache files are valid when resuming — do not delete them
+    srun python train.py --resume "$CHECKPOINT"
+else
+    echo "No checkpoint found, starting fresh"
+    # Remove any stale cache files from previous failed runs
+    rm -f /home/ssuttorp/Anti-UAV-RGBT/train_ir_images.cache
+    rm -f /home/ssuttorp/Anti-UAV-RGBT/val_ir_images.cache
+
+    srun python train.py \
+        --data $REPO/resources/EDTC/yolov5/data/antiuav_clean.yaml \
+        --weights $EDTC/yolov5/yolov5s.pt \
+        --img 640 \
+        --epochs 20 \
+        --batch-size 64 \
+        --workers 8 \
+        --seed $SEED \
+        --project $EDTC/yolov5/runs/train \
+        --name $RUN_NAME \
+        --exist-ok
+fi
+
+# Copy this seed's clean checkpoint to pretrained_models for use by EDTC tracker
+cp $EDTC/yolov5/runs/train/${RUN_NAME}/weights/best.pt \
+   /home/ssuttorp/pretrained_models/best_clean_seed${SEED}.pt
+
+echo "Training complete (seed=${SEED}). Checkpoint saved to pretrained_models/best_clean_seed${SEED}.pt"

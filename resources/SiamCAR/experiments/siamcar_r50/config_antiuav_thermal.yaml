@@ -1,0 +1,102 @@
+META_ARC: "siamcar_r50"
+
+BACKBONE:
+  TYPE: "resnet50"
+  KWARGS:
+    used_layers: [2, 3, 4]
+  PRETRAINED: ""
+  # Epochs 1-10: backbone frozen (TRAIN_EPOCH=10 triggers unfreeze at epoch 10)
+  # Epochs 11-20: layer2 / layer3 / layer4 unfreeze (last 3 ResNet-50 blocks)
+  TRAIN_LAYERS: ["layer2", "layer3", "layer4"]
+  TRAIN_EPOCH: 10
+  LAYERS_LR: 0.1
+
+ADJUST:
+  ADJUST: true
+  TYPE: "AdjustAllLayer"
+  KWARGS:
+    in_channels: [512, 1024, 2048]
+    out_channels: [256, 256, 256]
+
+TRACK:
+  TYPE: "SiamCARTracker"
+  PENALTY_K: 0.04
+  WINDOW_INFLUENCE: 0.44
+  LR: 0.33
+  EXEMPLAR_SIZE: 127
+  INSTANCE_SIZE: 255
+  CONTEXT_AMOUNT: 0.5
+  STRIDE: 8
+
+HP_SEARCH:
+  # [lr, penalty_k, window_lr] — start from UAV123 values, tune after baseline
+  ANTIUAVTHERMAL: [0.4, 0.2, 0.3]
+
+TRAIN:
+  EPOCH: 20
+  START_EPOCH: 0
+  BATCH_SIZE: 32
+  NUM_WORKERS: 8
+  # SGD lr=1e-3 for neck+head; backbone gets LAYERS_LR * BASE_LR = 1e-4
+  BASE_LR: 0.001
+  MOMENTUM: 0.9
+  WEIGHT_DECAY: 0.0001
+  # Loss weights: unchanged from original SiamCAR
+  CLS_WEIGHT: 1.0
+  LOC_WEIGHT: 3.0
+  CEN_WEIGHT: 1.0
+  GRAD_CLIP: 10.0
+  LOG_GRADS: false
+  PRINT_FREQ: 20
+  NUM_CLASSES: 2
+  NUM_CONVS: 4
+  PRIOR_PROB: 0.01
+  OUTPUT_SIZE: 25
+  EXEMPLAR_SIZE: 127
+  SEARCH_SIZE: 255
+  LOG_DIR: "/home/ssuttorp/mm-uav-threat-detection/logs/siamcar_thermal"
+  SNAPSHOT_DIR: "/home/ssuttorp/pretrained_models/siamcar_thermal"
+  PRETRAINED: "/home/ssuttorp/pretrained_models/model_general.pth"
+  RESUME: ""
+
+  LR:
+    TYPE: "log"
+    KWARGS:
+      start_lr: 0.001
+      end_lr: 0.0001
+
+  LR_WARMUP:
+    WARMUP: true
+    TYPE: "step"
+    EPOCH: 5
+    KWARGS:
+      start_lr: 0.0001
+      end_lr: 0.001
+      step: 1
+
+DATASET:
+  NAMES:
+    - "ANTIUAV_THERMAL"
+
+  ANTIUAV_THERMAL:
+    ROOT: "/home/ssuttorp/Anti-UAV-RGBT/train"
+    FRAME_RANGE: 50
+    NUM_USE: 16000   # 100 random pairs per sequence per run; random frame selection gives diverse pairs
+
+  TEMPLATE:
+    SHIFT: 4
+    SCALE: 0.05
+    BLUR: 0.0
+    FLIP: 0.0
+    COLOR: 1.0
+
+  SEARCH:
+    SHIFT: 64
+    SCALE: 0.18
+    BLUR: 0.0
+    FLIP: 0.0
+    COLOR: 1.0
+
+  NEG: 0.0
+  GRAY: 0.25       # 25 % grayscale augmentation (thermal already single-channel)
+  VIDEOS_PER_EPOCH: 0   # 0 → use actual dataset size × EPOCH

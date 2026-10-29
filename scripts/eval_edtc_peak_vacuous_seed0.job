@@ -1,0 +1,174 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=08:00:00
+#SBATCH --job-name=edtc_pv
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/edtc_pv_%x_%A.out
+
+# =============================================================================
+# Det+Track (YOLO + SiamCAR) seed-0 re-run with the two code changes that were
+# so far only applied to the detector-only path:
+#   1. --unc_agg peak     : YOLO uncertainty sampled at the SELECTED detection
+#                           (top NMS survivor) instead of the legacy anchor mean.
+#   2. --miss_belief vacuous : a YOLO stream that returns nothing gets the
+#                           partition-consistent zero-evidence opinion
+#                           b=(0,0), u=1 instead of the dogmatic _ZERO_UNC
+#                           placeholder b=(0,1), u=1.  (Dual operators only;
+#                           single-stream has no fusion so it is omitted there.)
+#
+# Switching thresholds: the previously-used values are PER-OPERATOR (matching
+# the old det+track runs / paper table), NOT shared:
+#   dbf / abf / naive : cls_d=0.550 loc_d=0.035 cls_t=0.529 loc_t=0.564
+#                       (scripts/eval_edtc_fusion_dbf.job; naive reuses the
+#                        fusion set — it had no separate det+track calibration)
+#   ir  (single)      : cls_d=0.680 loc_d=0.060 cls_t=0.200 loc_t=0.500
+#                       (scripts/eval_edtc_single_ir.job)
+#   rgb (single)      : cls_d=0.696 loc_d=0.059 cls_t=0.100 loc_t=0.400
+#                       (scripts/eval_edtc_single_rgb.job)
+#
+# SiamCAR was NOT re-finetuned per seed, so this is a seed-0-only run that
+# reuses the single SiamCAR Stage-2 checkpoints.
+#
+# Reports Acc (paper formula, from summary.json) and mIoU (mean_iou_present,
+# from the rescore_belief_metrics.py pass appended after each run).
+#
+# Parameterized by two environment variables (pass via sbatch --export):
+#   OP    : ir | rgb | dbf | abf
+#   SPLIT : val | test
+#
+# Submit all 8 (4 operators x 2 splits) as independent A100 jobs:
+#   cd /home/ssuttorp/mm-uav-threat-detection
+#   for SPLIT in val test; do
+#     for OP in ir rgb dbf abf; do
+#       sbatch --job-name=pv_${OP}_${SPLIT} \
+#              --export=ALL,OP=${OP},SPLIT=${SPLIT} \
+#              scripts/eval_edtc_peak_vacuous_seed0.job
+#     done
+#   done
+# =============================================================================
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+: "${OP:?set OP=ir|rgb|dbf|abf via --export}"
+: "${SPLIT:?set SPLIT=val|test via --export}"
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+EDTC=$PRETRAINED/edtc_fusion
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+mkdir -p $REPO/logs
+cd $REPO
+
+# ── Seed-0 checkpoints (no seed suffix) ──────────────────────────────────────
+YOLO_IR=$PRETRAINED/evidential/evidential_ir_stage2_best.pt
+YOLO_IR_BASE=$PRETRAINED/best_clean.pt
+YOLO_RGB=$PRETRAINED/evidential/evidential_rgb_stage2_best.pt
+YOLO_RGB_BASE=$PRETRAINED/best_clean_rgb.pt
+
+SIAM_IR_S2=$PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth
+SIAM_RGB_S2=$PRETRAINED/siamcar_gaussian/siamcar_rgb_stage2_best.pth
+SIAM_IR_S1=$PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth
+SIAM_RGB_S1=$PRETRAINED/siamcar_gaussian/siamcar_rgb_stage1g_best.pth
+SIAM_IR_PRE=$PRETRAINED/siamcar_thermal_final.pth
+SIAM_RGB_PRE=$PRETRAINED/siamcar_rgb_final.pth
+SIAM_IR_CFG=$REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml
+SIAM_RGB_CFG=$REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_rgb.yaml
+
+# ── Calibrated switching thresholds (fusion default; ir/rgb override below) ──
+TCD=0.550
+TLD=0.035
+TCT=0.529
+TLT=0.564
+
+DATASET_ROOT=$DATA/$SPLIT
+
+case "$OP" in
+  dbf|abf)
+    RESULTS=$EDTC/${SPLIT}_results_edtc_${OP}_peak_vacuous_seed0
+    mkdir -p $RESULTS
+    echo "=== Det+Track ${OP} (peak, vacuous) — split=${SPLIT} ==="
+    srun python -u -m src.edtc_fusion.run_edtc_fusion \
+        --dataset_root        $DATASET_ROOT \
+        --results_dir         $RESULTS \
+        --yolo_ir             $YOLO_IR \
+        --yolo_rgb            $YOLO_RGB \
+        --yolo_ir_base        $YOLO_IR_BASE \
+        --yolo_rgb_base       $YOLO_RGB_BASE \
+        --siam_ir_stage2      $SIAM_IR_S2 \
+        --siam_rgb_stage2     $SIAM_RGB_S2 \
+        --siam_ir_stage1      $SIAM_IR_S1 \
+        --siam_rgb_stage1     $SIAM_RGB_S1 \
+        --siam_ir_pretrained  $SIAM_IR_PRE \
+        --siam_rgb_pretrained $SIAM_RGB_PRE \
+        --siam_ir_cfg         $SIAM_IR_CFG \
+        --siam_rgb_cfg        $SIAM_RGB_CFG \
+        --fusion              $OP \
+        --lam                 1.0 \
+        --unc_agg             peak \
+        --miss_belief         vacuous \
+        --theta_cls_detect    $TCD \
+        --theta_loc_detect    $TLD \
+        --theta_cls_track     $TCT \
+        --theta_loc_track     $TLT
+    ;;
+
+  ir|rgb)
+    RESULTS=$EDTC/${SPLIT}_results_edtc_single_${OP}_peak_seed0
+    mkdir -p $RESULTS
+    if [ "$OP" = "ir" ]; then
+      YOLO=$YOLO_IR;  YOLO_B=$YOLO_IR_BASE
+      S2=$SIAM_IR_S2; S1=$SIAM_IR_S1; PRE=$SIAM_IR_PRE; CFG=$SIAM_IR_CFG
+      # IR single-stream thresholds (eval_edtc_single_ir.job).
+      TCD=0.680; TLD=0.060; TCT=0.200; TLT=0.500
+    else
+      YOLO=$YOLO_RGB; YOLO_B=$YOLO_RGB_BASE
+      S2=$SIAM_RGB_S2; S1=$SIAM_RGB_S1; PRE=$SIAM_RGB_PRE; CFG=$SIAM_RGB_CFG
+      # RGB single-stream thresholds (eval_edtc_single_rgb.job).
+      TCD=0.696; TLD=0.059; TCT=0.100; TLT=0.400
+    fi
+    echo "=== Det+Track single-${OP} (peak) — split=${SPLIT} ==="
+    srun python -u -m src.edtc_fusion.run_edtc_single \
+        --modality        $OP \
+        --dataset_root    $DATASET_ROOT \
+        --results_dir     $RESULTS \
+        --yolo            $YOLO \
+        --yolo_base       $YOLO_B \
+        --siam_stage2     $S2 \
+        --siam_stage1     $S1 \
+        --siam_pretrained $PRE \
+        --siam_cfg        $CFG \
+        --unc_agg         peak \
+        --theta_cls_detect $TCD \
+        --theta_loc_detect $TLD \
+        --theta_cls_track  $TCT \
+        --theta_loc_track  $TLT
+    ;;
+
+  *)
+    echo "Unknown OP='$OP' (expected ir|rgb|dbf|abf)" >&2
+    exit 1
+    ;;
+esac
+
+# ── mIoU + Acc(thresh) rescore (belief-independent; reads saved .txt/_log.csv)
+echo ""
+echo "=== Rescoring belief metrics (mIoU) for $RESULTS ==="
+srun python -u -m src.edtc_fusion.rescore_belief_metrics \
+    --results_dir  $RESULTS \
+    --dataset_root $DATASET_ROOT
+
+echo ""
+echo "Done: OP=${OP} SPLIT=${SPLIT}"
+echo "  Acc  (paper formula) -> $RESULTS/summary.json            (acc_dms / acc)"
+echo "  mIoU (present frames) -> $RESULTS/summary_belief_metrics.json (mean_iou_present)"

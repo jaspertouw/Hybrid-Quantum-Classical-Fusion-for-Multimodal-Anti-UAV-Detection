@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_yolo_clean_rgb
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/train_yolo_clean_rgb_%A.out
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+EDTC=$REPO/resources/EDTC
+CHECKPOINT=$EDTC/yolov5/runs/train/antiuav_clean_rgb/weights/last.pt
+
+export PYTHONPATH=$EDTC:$EDTC/yolov5:$PYTHONPATH
+
+cd $EDTC/yolov5
+
+# Resume from last checkpoint if one exists (e.g. after a timeout or manual cancel),
+# otherwise start fresh from COCO pretrained weights.
+if [ -f "$CHECKPOINT" ]; then
+    echo "Resuming from $CHECKPOINT"
+    srun python train.py --resume "$CHECKPOINT"
+else
+    echo "No checkpoint found, starting fresh"
+    rm -f /home/ssuttorp/Anti-UAV-RGBT/train_rgb_images.cache
+    rm -f /home/ssuttorp/Anti-UAV-RGBT/val_rgb_images.cache
+
+    srun python train.py \
+        --data $REPO/resources/EDTC/yolov5/data/antiuav_clean_rgb.yaml \
+        --weights $EDTC/yolov5/yolov5s.pt \
+        --img 640 \
+        --epochs 20 \
+        --batch-size 64 \
+        --workers 8 \
+        --project $EDTC/yolov5/runs/train \
+        --name antiuav_clean_rgb \
+        --exist-ok
+fi
+
+# Copy clean RGB checkpoint to pretrained_models
+cp $EDTC/yolov5/runs/train/antiuav_clean_rgb/weights/best.pt \
+   /home/ssuttorp/pretrained_models/best_clean_rgb.pt
+
+echo "Training complete. Clean RGB checkpoint saved to pretrained_models/best_clean_rgb.pt"

@@ -1,0 +1,66 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=edtc_ir_no_u
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/edtc_ir_no_ufused_%A.out
+
+# Ablation: single-modality (IR) EDTC pipeline WITHOUT the u gate.
+# Gating reduces to:   argmax(b) == UAV  AND  sigma2 < theta_loc
+#
+# The two theta_cls thresholds are forced to +inf inside the runner, so the
+# u < theta_cls check always passes.  The theta_loc values below should
+# match the calibrated single-IR baseline so the only difference is the
+# absence of u-based gating.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+
+# ── Localisation thresholds (mirror the calibrated single-IR baseline) ───
+THETA_LOC_DETECT=0.060
+THETA_LOC_TRACK=0.500
+# ──────────────────────────────────────────────────────────────────────────
+
+TAG="ld${THETA_LOC_DETECT}_lt${THETA_LOC_TRACK}"
+RESULTS=$PRETRAINED/edtc_fusion/val_results_single_ir_no_ufused_${TAG}
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_edtc_single_no_ufused \
+    --modality            ir \
+    --dataset_root        $DATA/val \
+    --results_dir         $RESULTS \
+    --yolo                $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_base           $PRETRAINED/best_clean.pt \
+    --siam_stage2         $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_stage1         $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_pretrained     $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_cfg            $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --theta_cls_detect    0.0 \
+    --theta_loc_detect    $THETA_LOC_DETECT \
+    --theta_cls_track     0.0 \
+    --theta_loc_track     $THETA_LOC_TRACK
+
+echo ""
+echo "Single-IR no-u ablation run complete."
+echo "Gate       : argmax(b)==UAV  AND  sigma2 < theta_loc"
+echo "Thresholds : loc_d=${THETA_LOC_DETECT}  loc_t=${THETA_LOC_TRACK}  (cls_* forced to +inf)"
+echo "Results    : $RESULTS/summary.json"
+echo "Acc metric : failure_iou_thresh=1e-5  penalty_denom=T_total (matches EDTC eval script)"

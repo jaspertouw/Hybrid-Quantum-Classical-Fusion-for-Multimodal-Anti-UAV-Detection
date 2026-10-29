@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --partition=rome
+#SBATCH --job-name=install_thesis2026
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=02:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/install_env_%A.out
+
+set -e   # exit immediately if any command fails
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+cd $HOME/mm-uav-threat-detection
+
+# Create a clean Python environment (no conda channel lookups for packages)
+conda create -n thesis2026 python=3.9 -y
+
+# Activate and install everything via pip
+source activate thesis2026
+
+# Install PyTorch with CUDA 12.4 wheels (compatible with the loaded CUDA 12.6)
+pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu124
+
+# Install all other EDTC dependencies
+pip install -r requirements_edtc.txt
+
+echo "Environment creation complete."

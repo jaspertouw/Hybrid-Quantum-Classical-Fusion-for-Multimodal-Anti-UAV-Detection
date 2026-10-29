@@ -1,0 +1,57 @@
+# Operating-system and editor state
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# Python environments, caches, and packaging
+.env
+.env.*
+!.env.example
+.venv/
+env/
+wheels/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Private data and model artifacts
+data/
+datasets/
+Anti-UAV*/
+pretrained_models/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Generated experiment artifacts (keep directory placeholders if added)
+logs/
+outputs/
+runs/
+wandb/
+tensorboard/
+*.out
+
+# Generated thesis artifacts
+# The thesis manuscript is private and remains local only.
+thesis/
+thesis/**/*.aux
+thesis/**/*.bbl
+thesis/**/*.bcf
+thesis/**/*.blg
+thesis/**/*.fdb_latexmk
+thesis/**/*.fls
+thesis/**/*.log
+thesis/**/*.out
+thesis/**/*.pdf
+thesis/**/*.run.xml
+thesis/**/*.synctex.gz
+thesis/**/*.toc

@@ -1,0 +1,50 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=sigma_best_size_strat
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=00:25:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/sigma_best_size_stratified_%j.out
+
+# Target-size-stratified sigma2_best discriminability, IR-only vs RGB-only
+# (validation, seeds 0/1/2 pooled).  Reuses the per-frame *_log.csv + *.txt logs
+# from the eval_detector_only_{ir,rgb}[_seeds] jobs and decodes frames to get the
+# native image size for the normalized-size denominator.  CPU-only workload.
+#
+# Per-seed folders (all --unc_agg peak): seed 0 = *_peak, seeds 1/2 = *_seed{N}.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+BASE=/home/ssuttorp/pretrained_models/edtc_fusion
+VAL=$DATA/val
+OUT=$REPO/reports/sigma_best_size_stratified
+FIG=$REPO/outputs/sigma_best_size_stratified.png
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+mkdir -p $OUT $REPO/outputs $REPO/logs
+cd $REPO
+
+srun --ntasks=1 python -u scripts/analyse_sigma_best_size_stratified.py \
+    --base         "$BASE" \
+    --dataset_root "$VAL" \
+    --seeds        0 1 2 \
+    --success_iou  0.5 \
+    --out_fig      "$FIG" \
+    --out_dir      "$OUT"
+
+echo ""
+echo "============================================================"
+echo "Done."
+echo "Figure -> $FIG"
+echo "Table  -> $OUT/sigma_best_size_stratified_report.md"
+echo "JSON   -> $OUT/sigma_best_size_stratified.json"
+echo "============================================================"

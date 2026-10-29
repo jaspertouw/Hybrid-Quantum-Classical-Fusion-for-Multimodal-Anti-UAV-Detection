@@ -1,0 +1,78 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=edtc_fusion_dbf
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/edtc_fusion_dbf_%A.out
+
+# EDTC fusion tracker (DBF + DMS) — b_uav logging run.
+#
+# Switching signals logged per frame (for separability analysis):
+#   u_fused      (DBF vacuity — current semantic threshold signal)
+#   b_uav        (DBF belief mass for UAV class — proposed replacement signal)
+#   sigma2_best  (DMS-selected modality spatial variance)
+#
+# Switching conditions (u_fused-based; b_uav is logged but not yet used for gating):
+#   INIT     :  u_fused < theta_cls_detect  AND  sigma2_best < theta_loc_detect
+#   MAINTAIN :  u_fused < theta_cls_track   AND  sigma2_best < theta_loc_track
+#
+# Thresholds: best calibrated values from grid search on val Acc.
+#
+# Models loaded:
+#   - YOLO IR  Phase 3 evidential (b/u + sigma^2 per anchor)
+#   - YOLO RGB Phase 3 evidential
+#   - SiamCAR IR  Phase 4 Stage 2 (cls_evi + bbox_var)
+#   - SiamCAR RGB Phase 4 Stage 2
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/val_results_dbf_buav_logged
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_edtc_fusion \
+    --dataset_root        $DATA/val \
+    --results_dir         $RESULTS \
+    --yolo_ir             $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_rgb            $PRETRAINED/evidential/evidential_rgb_stage2_best.pt \
+    --yolo_ir_base        $PRETRAINED/best_clean.pt \
+    --yolo_rgb_base       $PRETRAINED/best_clean_rgb.pt \
+    --siam_ir_stage2      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_rgb_stage2     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage2_best.pth \
+    --siam_ir_stage1      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_rgb_stage1     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage1g_best.pth \
+    --siam_ir_pretrained  $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_rgb_pretrained $PRETRAINED/siamcar_rgb_final.pth \
+    --siam_ir_cfg         $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --siam_rgb_cfg        $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_rgb.yaml \
+    --fusion              dbf \
+    --lam                 1.0 \
+    --theta_cls_detect    0.550 \
+    --theta_loc_detect    0.035 \
+    --theta_cls_track     0.529 \
+    --theta_loc_track     0.564
+
+echo ""
+echo "EDTC fusion (DBF) b_uav logging run complete."
+echo "NOTE: logs now contain b_uav column (b_fused(UAV) belief mass) for separability analysis."
+echo "Per-sequence results : $RESULTS/<seq>.txt"
+echo "Per-frame logs       : $RESULTS/<seq>_log.csv"
+echo "Aggregate summary    : $RESULTS/summary.json"
+echo "Acc metric           : failure_iou_thresh=1e-5  penalty_denom=T_total (not T*)  [matches EDTC eval script]"

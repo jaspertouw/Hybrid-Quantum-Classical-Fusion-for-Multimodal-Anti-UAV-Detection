@@ -1,0 +1,67 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=val_abf
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=04:00:00
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/val_edtc_fusion_abf_%A.out
+
+# VALIDATION SET — EDTC Fusion ABF threshold calibration.
+# Warm-started from DBF locked thresholds (val Acc_DMS=0.743).
+# If this run beats DBF val Acc, update test_edtc_fusion_abf.job and submit.
+# ABF uses unconditioned Averaging Belief Fusion (eta=1) — no conflict discount.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+THETA_CLS_DETECT=0.550
+THETA_LOC_DETECT=0.035
+THETA_CLS_TRACK=0.529
+THETA_LOC_TRACK=0.564
+
+TAG="cd${THETA_CLS_DETECT}_ld${THETA_LOC_DETECT}_ct${THETA_CLS_TRACK}_lt${THETA_LOC_TRACK}"
+RESULTS=$PRETRAINED/edtc_fusion/val_results_abf_${TAG}
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+srun python -u -m src.edtc_fusion.run_edtc_fusion \
+    --dataset_root        $DATA/val \
+    --results_dir         $RESULTS \
+    --yolo_ir             $PRETRAINED/evidential/evidential_ir_stage2_best.pt \
+    --yolo_rgb            $PRETRAINED/evidential/evidential_rgb_stage2_best.pt \
+    --yolo_ir_base        $PRETRAINED/best_clean.pt \
+    --yolo_rgb_base       $PRETRAINED/best_clean_rgb.pt \
+    --siam_ir_stage2      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage2_best.pth \
+    --siam_rgb_stage2     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage2_best.pth \
+    --siam_ir_stage1      $PRETRAINED/siamcar_gaussian/siamcar_ir_stage1g_best.pth \
+    --siam_rgb_stage1     $PRETRAINED/siamcar_gaussian/siamcar_rgb_stage1g_best.pth \
+    --siam_ir_pretrained  $PRETRAINED/siamcar_thermal_final.pth \
+    --siam_rgb_pretrained $PRETRAINED/siamcar_rgb_final.pth \
+    --siam_ir_cfg         $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_thermal.yaml \
+    --siam_rgb_cfg        $REPO/resources/SiamCAR/experiments/siamcar_r50/config_antiuav_rgb.yaml \
+    --fusion              abf \
+    --theta_cls_detect    $THETA_CLS_DETECT \
+    --theta_loc_detect    $THETA_LOC_DETECT \
+    --theta_cls_track     $THETA_CLS_TRACK \
+    --theta_loc_track     $THETA_LOC_TRACK
+
+echo ""
+echo "Val Acc_DMS -> $RESULTS/summary.json"
+echo "Compare against DBF locked val: 0.743 (cls_d=0.550 loc_d=0.035 cls_t=0.529 loc_t=0.564)"
+echo "If ABF val Acc_DMS improves: update test_edtc_fusion_abf.job and submit test set."
+echo "Acc metric  : failure_iou_thresh=1e-5  penalty_denom=T_total (not T*)  [matches EDTC eval script]"

@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=detector_only_dms_seeds
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --array=0-1%1
+#SBATCH --output=/home/ssuttorp/mm-uav-threat-detection/logs/detector_only_dms_seed_%A_%a.out
+
+# Detector-only DMS baseline — per-seed eval for seeds 1 and 2.
+# Seed 0 is the existing val_results_detector_only_dms run.
+# DMS box selection only (no fusion, no suppression gate).
+# Eval is deterministic given the weights; the seed enters only via the
+# seed-specific evidential Stage 2 detectors + clean bases.
+# Precondition: stage2_evidential_{ir,rgb}_seeds.job completed for seeds 1 and 2.
+
+set -e
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source activate thesis2026
+
+SEEDS=(1 2)
+SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
+
+REPO=/home/ssuttorp/mm-uav-threat-detection
+DATA=/home/ssuttorp/Anti-UAV-RGBT
+PRETRAINED=/home/ssuttorp/pretrained_models
+RESULTS=$PRETRAINED/edtc_fusion/val_results_detector_only_dms_seed${SEED}
+
+export PYTHONPATH=$REPO:$REPO/resources/EDTC:$REPO/resources/EDTC/yolov5:$REPO/resources/SiamCAR:$PYTHONPATH
+
+mkdir -p $RESULTS
+mkdir -p $REPO/logs
+
+cd $REPO
+
+echo "Detector-only DMS eval — seed=${SEED}"
+
+srun python -u -m src.edtc_fusion.run_detector_only \
+    --mode          dms \
+    --dataset_root  $DATA/val \
+    --results_dir   $RESULTS \
+    --yolo_ir       $PRETRAINED/evidential/evidential_ir_stage2_seed${SEED}_best.pt \
+    --yolo_ir_base  $PRETRAINED/best_clean_seed${SEED}.pt \
+    --yolo_rgb      $PRETRAINED/evidential/evidential_rgb_stage2_seed${SEED}_best.pt \
+    --yolo_rgb_base $PRETRAINED/best_clean_rgb_seed${SEED}.pt
+
+echo ""
+echo "Detector-only DMS seed=${SEED} complete. Summary: $RESULTS/summary.json"
