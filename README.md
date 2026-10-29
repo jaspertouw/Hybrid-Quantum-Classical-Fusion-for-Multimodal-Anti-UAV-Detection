@@ -1,6 +1,6 @@
 # Quantum and Classical Decision-Level Fusion for Multimodal Anti-UAV Detection
 
-MSc thesis research by **Jasper Touw**, building on the multimodal evidential-fusion work of
+MSc thesis research building on the multimodal evidential-fusion work of
 Suttorp et al. The research studies whether variational quantum representations improve
 RGB--thermal decision-level fusion under clean, degraded, and missing-sensor conditions.
 
