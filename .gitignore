@@ -40,6 +40,9 @@ wandb/
 tensorboard/
 *.out
 
+# Private experiment planning (local working document)
+/experiments/OVERVIEW.md
+
 # Generated thesis artifacts
 # The thesis manuscript is private and remains local only.
 thesis/
