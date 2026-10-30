@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=install_detector_env
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=02:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly RECORD_DIR="/projects/prjs2348/mm-uav-threat-detection/outputs/environment"
+
+test -d "${REPO}/.git"
+test -f "${REPO}/requirements_edtc.txt"
+mkdir -p "${RECORD_DIR}"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source "$(conda info --base)/etc/profile.d/conda.sh"
+
+echo "Job: ${SLURM_JOB_ID:-interactive} on $(hostname)"
+echo "Repository: ${REPO} ($(git -C "${REPO}" rev-parse --short HEAD))"
+echo "Environment: ${ENV_PREFIX}"
+module list 2>&1
+
+if [[ ! -x "${ENV_PREFIX}/bin/python" ]]; then
+    conda create --prefix "${ENV_PREFIX}" python=3.9 pip=24.2 -y
+else
+    echo "Existing environment found; completing/rechecking its installation."
+fi
+
+conda activate "${ENV_PREFIX}"
+python -m pip install \
+    torch==2.4.0 torchvision==0.19.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+python -m pip install -r "${REPO}/requirements_edtc.txt"
+python -m pip check
+
+python --version
+python -c 'import torch; print("PyTorch:", torch.__version__); print("built CUDA:", torch.version.cuda)'
+
+python -m pip freeze | sort > "${RECORD_DIR}/detector-pip-freeze-${SLURM_JOB_ID}.txt"
+conda list --prefix "${ENV_PREFIX}" --explicit > "${RECORD_DIR}/detector-conda-explicit-${SLURM_JOB_ID}.txt"
+sha256sum "${RECORD_DIR}"/*-"${SLURM_JOB_ID}".txt
+
+echo "DETECTOR ENVIRONMENT INSTALLATION PASSED"
