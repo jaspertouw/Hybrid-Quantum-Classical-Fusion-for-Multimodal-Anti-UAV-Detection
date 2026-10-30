@@ -46,6 +46,13 @@ resources/EDTC/yolov5/utils/loggers/wandb/*
 !resources/EDTC/yolov5/utils/loggers/wandb/__init__.py
 !resources/EDTC/yolov5/utils/loggers/wandb/wandb_utils.py
 
+# Keep the inherited YOLOv5 training hyperparameters while ignoring datasets.
+!resources/EDTC/yolov5/data/
+resources/EDTC/yolov5/data/*
+!resources/EDTC/yolov5/data/hyps/
+resources/EDTC/yolov5/data/hyps/*
+!resources/EDTC/yolov5/data/hyps/hyp.scratch-low.yaml
+
 # Private experiment planning (local working document)
 /experiments/OVERVIEW.md
 

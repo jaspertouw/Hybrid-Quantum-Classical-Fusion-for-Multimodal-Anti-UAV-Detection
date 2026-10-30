@@ -17,6 +17,7 @@ readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
 readonly DATA_ROOT="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
 readonly DERIVED_ROOT="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
 readonly BASE_WEIGHT="${PROJECT_ROOT}/checkpoints/base/yolov5s.pt"
+readonly HYP="${REPO}/resources/EDTC/yolov5/data/hyps/hyp.scratch-low.yaml"
 readonly RUN_ROOT="${PROJECT_ROOT}/checkpoints/detectors/clean_yolo"
 readonly EXPECTED_BASE_SHA256="8b3b748c1e592ddd8868022e8732fde20025197328490623cc16c6f24d0782ee"
 readonly MODALITIES=(thermal rgb)
@@ -29,6 +30,7 @@ test -d "${REPO}/.git"
 test -x "${ENV_PREFIX}/bin/python"
 test -f "${DERIVED_ROOT}/${MODALITY}/dataset.yaml"
 test -f "${BASE_WEIGHT}"
+test -f "${HYP}"
 test ! -e "${DATA_ROOT}/test"
 echo "${EXPECTED_BASE_SHA256}  ${BASE_WEIGHT}" | sha256sum --check --status
 mkdir -p "${RUN_ROOT}"
@@ -58,6 +60,7 @@ else
     echo "Starting ${MODALITY} from the verified inherited base checkpoint"
     srun python train.py \
         --data "${DERIVED_ROOT}/${MODALITY}/dataset.yaml" \
+        --hyp "${HYP}" \
         --weights "${BASE_WEIGHT}" \
         --img 640 \
         --epochs 20 \
