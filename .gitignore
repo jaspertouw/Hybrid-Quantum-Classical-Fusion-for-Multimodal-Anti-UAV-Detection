@@ -40,6 +40,12 @@ wandb/
 tensorboard/
 *.out
 
+# Keep YOLOv5's required W&B compatibility source while ignoring run artifacts.
+!resources/EDTC/yolov5/utils/loggers/wandb/
+resources/EDTC/yolov5/utils/loggers/wandb/*
+!resources/EDTC/yolov5/utils/loggers/wandb/__init__.py
+!resources/EDTC/yolov5/utils/loggers/wandb/wandb_utils.py
+
 # Private experiment planning (local working document)
 /experiments/OVERVIEW.md
 
