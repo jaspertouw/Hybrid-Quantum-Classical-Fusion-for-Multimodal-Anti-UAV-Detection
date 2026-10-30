@@ -1,0 +1,75 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=train_clean_yolo
+#SBATCH --array=0-1%1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=12:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%A_%a.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly DATA_ROOT="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
+readonly DERIVED_ROOT="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
+readonly BASE_WEIGHT="${PROJECT_ROOT}/checkpoints/base/yolov5s.pt"
+readonly RUN_ROOT="${PROJECT_ROOT}/checkpoints/detectors/clean_yolo"
+readonly EXPECTED_BASE_SHA256="8b3b748c1e592ddd8868022e8732fde20025197328490623cc16c6f24d0782ee"
+readonly MODALITIES=(thermal rgb)
+readonly MODALITY="${MODALITIES[${SLURM_ARRAY_TASK_ID}]}"
+readonly RUN_NAME="${MODALITY}_seed0"
+readonly RUN_DIR="${RUN_ROOT}/${RUN_NAME}"
+readonly LAST_WEIGHT="${RUN_DIR}/weights/last.pt"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test -f "${DERIVED_ROOT}/${MODALITY}/dataset.yaml"
+test -f "${BASE_WEIGHT}"
+test ! -e "${DATA_ROOT}/test"
+echo "${EXPECTED_BASE_SHA256}  ${BASE_WEIGHT}" | sha256sum --check --status
+mkdir -p "${RUN_ROOT}"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+
+export PYTHONPATH="${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
+cd "${REPO}/resources/EDTC/yolov5"
+
+echo "Job: ${SLURM_JOB_ID} task ${SLURM_ARRAY_TASK_ID} on $(hostname)"
+echo "Repository: ${REPO} ($(git -C "${REPO}" rev-parse HEAD))"
+echo "Modality: ${MODALITY}; seed: 0"
+echo "Base checkpoint: ${BASE_WEIGHT} (${EXPECTED_BASE_SHA256})"
+module list 2>&1
+nvidia-smi
+
+if [[ -f "${LAST_WEIGHT}" ]]; then
+    echo "Resuming ${MODALITY} from ${LAST_WEIGHT}"
+    srun python train.py --resume "${LAST_WEIGHT}"
+else
+    echo "Starting ${MODALITY} from the verified inherited base checkpoint"
+    srun python train.py \
+        --data "${DERIVED_ROOT}/${MODALITY}/dataset.yaml" \
+        --weights "${BASE_WEIGHT}" \
+        --img 640 \
+        --epochs 20 \
+        --batch-size 64 \
+        --workers 8 \
+        --seed 0 \
+        --project "${RUN_ROOT}" \
+        --name "${RUN_NAME}" \
+        --exist-ok
+fi
+
+test -f "${RUN_DIR}/weights/best.pt"
+test -f "${RUN_DIR}/weights/last.pt"
+sha256sum "${RUN_DIR}/weights/best.pt" "${RUN_DIR}/weights/last.pt"
+echo "CLEAN YOLO TRAINING PASSED: ${MODALITY}"
