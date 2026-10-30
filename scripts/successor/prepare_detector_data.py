@@ -83,7 +83,7 @@ def prepare_sequence(task: tuple[str, str, str, str]) -> dict:
             shutil.rmtree(temporary)
             raise RuntimeError(f"Cannot open video: {video}")
 
-        frame_count = positive_count = clipped_count = 0
+        frame_count = positive_count = clipped_count = zero_area_positive_count = 0
         try:
             while True:
                 ok, frame = capture.read()
@@ -107,21 +107,21 @@ def prepare_sequence(task: tuple[str, str, str, str]) -> dict:
                     raise ValueError(f"Invalid box at frame {frame_count}: {annotation}")
                 x, y, width, height = map(float, box)
                 image_height, image_width = frame.shape[:2]
-                x1, y1 = max(0.0, x), max(0.0, y)
-                x2 = min(float(image_width), x + width)
-                y2 = min(float(image_height), y + height)
-                if x2 <= x1 or y2 <= y1:
-                    raise ValueError(f"Empty box at frame {frame_count}: {annotation}")
-                clipped_count += int((x1, y1, x2 - x1, y2 - y1) != (x, y, width, height))
-                positive_count += 1
-                yolo = (
-                    (x1 + x2) / (2.0 * image_width),
-                    (y1 + y2) / (2.0 * image_height),
-                    (x2 - x1) / image_width,
-                    (y2 - y1) / image_height,
+                # Preserve the inherited conversion exactly: normalize x/y/w/h
+                # independently and clamp each YOLO value to [0, 1]. This retains
+                # zero-area positive labels present in the source annotations.
+                raw_yolo = (
+                    (x + width / 2.0) / image_width,
+                    (y + height / 2.0) / image_height,
+                    width / image_width,
+                    height / image_height,
                 )
+                yolo = tuple(max(0.0, min(1.0, value)) for value in raw_yolo)
+                clipped_count += int(yolo != raw_yolo)
+                zero_area_positive_count += int(yolo[2] <= 0.0 or yolo[3] <= 0.0)
+                positive_count += 1
                 label_path.write_text(
-                    "0 " + " ".join(f"{value:.8f}" for value in yolo) + "\n",
+                    "0 " + " ".join(f"{value:.6f}" for value in yolo) + "\n",
                     encoding="utf-8",
                 )
         except Exception:
@@ -142,6 +142,7 @@ def prepare_sequence(task: tuple[str, str, str, str]) -> dict:
             "frames": frame_count,
             "positive_frames": positive_count,
             "clipped_boxes": clipped_count,
+            "zero_area_positive_labels": zero_area_positive_count,
         }
         (temporary / "complete.json").write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -209,6 +210,12 @@ def main() -> None:
 
     manifest = output_root / "preparation_manifest.json"
     manifest.write_text(json.dumps(records, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    for modality in MODALITIES:
+        zero_area_total = sum(
+            record["modalities"][modality].get("zero_area_positive_labels", 0)
+            for record in records
+        )
+        print(f"{modality}: retained {zero_area_total} inherited zero-area positive labels")
     print(f"Prepared {len(tasks)} train/validation sequences; manifest: {manifest}")
     print("DETECTOR DATA PREPARATION PASSED")
 

@@ -12,7 +12,7 @@ set -euo pipefail
 readonly REPO="${HOME}/mm-uav-threat-detection"
 readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
 readonly DATASET="/projects/prjs2348/mm-uav-threat-detection/data/Anti-UAV-RGBT"
-readonly DERIVED="/projects/prjs2348/mm-uav-threat-detection/data/derived/yolo"
+readonly DERIVED="/projects/prjs2348/mm-uav-threat-detection/data/derived/yolo_inherited_v1"
 
 test -d "${REPO}/.git"
 test -x "${ENV_PREFIX}/bin/python"
