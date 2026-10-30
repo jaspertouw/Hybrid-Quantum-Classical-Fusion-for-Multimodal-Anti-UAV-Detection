@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=prepare_detector_data
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=08:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly DATASET="/projects/prjs2348/mm-uav-threat-detection/data/Anti-UAV-RGBT"
+readonly DERIVED="/projects/prjs2348/mm-uav-threat-detection/data/derived/yolo"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test -d "${DATASET}/train"
+test -d "${DATASET}/val"
+test ! -e "${DATASET}/test"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+
+echo "Job: ${SLURM_JOB_ID:-interactive} on $(hostname)"
+echo "Repository: ${REPO} ($(git -C "${REPO}" rev-parse HEAD))"
+echo "Source dataset: ${DATASET}"
+echo "Derived data: ${DERIVED}"
+
+srun python "${REPO}/scripts/successor/prepare_detector_data.py" \
+    --dataset-root "${DATASET}" \
+    --output-root "${DERIVED}" \
+    --workers "${SLURM_CPUS_PER_TASK}" \
+    --require-test-absent
