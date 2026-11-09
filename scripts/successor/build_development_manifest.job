@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=build_dev_manifest
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=04:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly DATASET="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
+readonly DERIVED="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
+readonly OUTPUT_DIR="${PROJECT_ROOT}/outputs/manifests"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test -d "${DATASET}/train"
+test -d "${DATASET}/val"
+test ! -e "${DATASET}/test"
+mkdir -p "${OUTPUT_DIR}"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+cd "${REPO}"
+
+echo "Job: ${SLURM_JOB_ID} on $(hostname)"
+echo "Repository: $(git rev-parse HEAD)"
+srun python scripts/build_development_manifest.py \
+    --dataset-root "${DATASET}" \
+    --derived-root "${DERIVED}" \
+    --output "${OUTPUT_DIR}/development_v1.jsonl" \
+    --summary "${OUTPUT_DIR}/development_v1_summary.json" \
+    --check-images
