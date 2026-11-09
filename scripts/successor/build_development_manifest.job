@@ -29,6 +29,7 @@ module load Miniconda3/24.7.1-0
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ENV_PREFIX}"
 cd "${REPO}"
+export PYTHONPATH="${REPO}:${PYTHONPATH:-}"
 
 echo "Job: ${SLURM_JOB_ID} on $(hostname)"
 echo "Repository: $(git rev-parse HEAD)"
