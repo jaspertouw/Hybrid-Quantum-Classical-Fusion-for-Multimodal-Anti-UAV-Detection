@@ -201,14 +201,20 @@ def validate(model, val_loader, device, conf_thres=0.25, iou_thres=0.45, K=2):
     tcls_all = torch.cat([s[3] for s in stats], 0).numpy()
 
     try:
-        p, r, ap, f1, ap_class = ap_per_class(
+        metrics = ap_per_class(
             tp_all, conf_all, pcls_all, tcls_all,
             plot=False, save_dir='.', names={0: 'UAV'},
         )
+        if len(metrics) == 7:
+            _, _, p, r, f1, ap, ap_class = metrics
+        elif len(metrics) == 5:
+            p, r, ap, f1, ap_class = metrics
+        else:
+            raise RuntimeError(f'Unexpected ap_per_class result length: {len(metrics)}')
         mAP50   = ap[:, 0].mean()       # AP at IoU=0.50
         mAP5095 = ap.mean()             # AP at IoU=0.50:0.95
-    except Exception:
-        mAP50 = mAP5095 = 0.0
+    except Exception as error:
+        raise RuntimeError('Validation metric computation failed') from error
 
     return {
         'mAP50':    float(mAP50),
