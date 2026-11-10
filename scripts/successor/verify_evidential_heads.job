@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=verify_evidential_heads
+#SBATCH --array=0-1%2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%A_%a.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly DATA_ROOT="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
+readonly DERIVED_ROOT="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
+readonly CLEAN_ROOT="${PROJECT_ROOT}/checkpoints/detectors/clean_yolo"
+readonly OUTPUT_ROOT="${PROJECT_ROOT}/checkpoints/detectors/evidential"
+readonly MODALITIES=(thermal rgb)
+readonly MODALITY="${MODALITIES[${SLURM_ARRAY_TASK_ID}]}"
+readonly CLEAN_WEIGHT="${CLEAN_ROOT}/${MODALITY}_seed0/weights/best.pt"
+readonly CHECKPOINT="${OUTPUT_ROOT}/${MODALITY}_stage2_seed0_best.pt"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test -f "${CLEAN_WEIGHT}"
+test -f "${CHECKPOINT}"
+test ! -e "${DATA_ROOT}/test"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+
+export PYTHONPATH="${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
+cd "${REPO}/resources/EDTC"
+
+echo "Job: ${SLURM_JOB_ID}; modality: ${MODALITY}; repository: $(git -C "${REPO}" rev-parse HEAD)"
+sha256sum "${CLEAN_WEIGHT}" "${CHECKPOINT}"
+
+srun python -u "${REPO}/scripts/successor/verify_evidential_checkpoint.py" \
+    --checkpoint "${CHECKPOINT}" \
+    --base-weights "${CLEAN_WEIGHT}" \
+    --data "${DERIVED_ROOT}/${MODALITY}/dataset.yaml" \
+    --train-txt "${DERIVED_ROOT}/${MODALITY}/train_images.txt" \
+    --val-txt "${DERIVED_ROOT}/${MODALITY}/val_images.txt" \
+    --device 0 \
+    --batch-size 64 \
+    --workers 8
+
+echo "EVIDENTIAL HEAD VERIFICATION PASSED: ${MODALITY}"
