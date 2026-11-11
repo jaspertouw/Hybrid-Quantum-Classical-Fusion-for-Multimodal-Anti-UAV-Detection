@@ -5,6 +5,8 @@ import argparse
 import math
 from pathlib import Path
 
+import torch
+
 from yolov5.utils.torch_utils import select_device
 
 from lib.models.yolo_evidential.model import EvidentialYOLO
@@ -39,8 +41,22 @@ def main() -> None:
     model.model[-1].use_cls_for_conf = False
     metrics = validate(model, val_loader, device, conf_thres=0.25, iou_thres=0.45, K=2)
     for images, *_ in val_loader:
-        report = run_verification(model, images[:8].float() / 255.0, device, K=2)
+        sample = images[:8].to(device).float() / 255.0
+        report = run_verification(model, sample, device, K=2)
         break
+
+    with torch.no_grad():
+        uncertainty_scales = model(sample)[4]
+    corrected = torch.cat([
+        scale["sigma2_norm_corrected"].reshape(-1) for scale in uncertainty_scales
+    ])
+    inherited = torch.cat([
+        scale["sigma2_norm_inherited"].reshape(-1) for scale in uncertainty_scales
+    ])
+    print(
+        f"spatial_corrected_mean={corrected.mean().item():.6f} "
+        f"spatial_inherited_mean={inherited.mean().item():.6f}"
+    )
 
     print(
         f"mAP50={metrics['mAP50']:.6f} "
@@ -51,6 +67,7 @@ def main() -> None:
     values = [
         metrics["mAP50"], metrics["mAP5095"], metrics["u_mean"],
         metrics["b_uav_mean"], report["sigma2_min"], report["sigma2_norm_min"],
+        corrected.mean().item(), inherited.mean().item(),
     ]
     if not all(math.isfinite(value) for value in values):
         raise RuntimeError("non-finite evidential validation result")

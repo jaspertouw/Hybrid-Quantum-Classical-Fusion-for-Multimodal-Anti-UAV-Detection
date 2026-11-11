@@ -28,6 +28,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from yolov5.utils.general import check_version
+from lib.utils.spatial_uncertainty import (
+    corrected_variance_components,
+    inherited_variance_components,
+)
 
 _TORCH_GE_110 = check_version(torch.__version__, '1.10.0')
 
@@ -227,23 +231,30 @@ class EvidentialDetect(nn.Module):
             log_var = rv.clamp(-10, 10)                     # prevent exp overflow → inf
             sigma2  = torch.exp(log_var)                    # positive variances
 
-            # Scale-normalised variances (He et al. 2019)
-            # σ̂²_x = σ²_x / w_pred,  σ̂²_y = σ²_y / h_pred
-            # σ̂²_w = σ²_w / w_pred², σ̂²_h = σ²_h / h_pred²
+            # Preserve the inherited normalization for reproduction audits,
+            # while using the dimensionally correct thesis feature by default.
+            # The head predicts variance in grid units: multiply by stride²
+            # before dividing every coordinate by squared box dimension.
             w_pred = wh[..., 0:1]
             h_pred = wh[..., 1:2]
-            sigma2_norm = torch.cat([
-                sigma2[..., 0:1] / (w_pred + 1e-6),
-                sigma2[..., 1:2] / (h_pred + 1e-6),
-                sigma2[..., 2:3] / (w_pred ** 2 + 1e-6),
-                sigma2[..., 3:4] / (h_pred ** 2 + 1e-6),
-            ], dim=-1)
+            sigma2_norm_inherited = torch.cat(
+                inherited_variance_components(sigma2, w_pred, h_pred), dim=-1
+            )
+            sigma2_norm_corrected = torch.cat(
+                corrected_variance_components(sigma2, w_pred, h_pred, self.stride[i]),
+                dim=-1,
+            )
+            sigma2_pixel = sigma2 * (self.stride[i] ** 2)
 
             unc_scales.append({
                 'u':           u,            # (bs, na, H, W, 1)
                 'b':           b,            # (bs, na, H, W, K)
-                'sigma2':      sigma2,       # (bs, na, H, W, 4)  absolute
-                'sigma2_norm': sigma2_norm,  # (bs, na, H, W, 4)  normalised
+                'sigma2':      sigma2,       # compatibility: grid-coordinate variance
+                'sigma2_grid': sigma2,
+                'sigma2_pixel': sigma2_pixel,
+                'sigma2_norm': sigma2_norm_corrected,
+                'sigma2_norm_corrected': sigma2_norm_corrected,
+                'sigma2_norm_inherited': sigma2_norm_inherited,
             })
 
             # ── NMS-compatible pack: [cx,cy,w,h, obj, b_UAV] ──────────
