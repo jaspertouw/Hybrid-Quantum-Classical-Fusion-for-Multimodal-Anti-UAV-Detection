@@ -144,3 +144,15 @@ def test_input_adapter_keeps_letterbox_padding_and_skips_dropout_decode(monkeypa
 def test_invalid_conditions_fail(kwargs):
     with pytest.raises(ValueError):
         Condition(**kwargs)
+
+
+def test_frozen_corruption_specification_matches_validated_sources():
+    import hashlib
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    specification = json.loads((root / "experiments/protocol/corruptions_v1.json").read_text())
+    assert specification["status"] == "frozen"
+    for relative, expected in specification["implementation_sha256"].items():
+        assert hashlib.sha256((root / relative).read_bytes()).hexdigest() == expected

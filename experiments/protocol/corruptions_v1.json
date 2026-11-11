@@ -1,6 +1,7 @@
 {
   "version": "1.0.0",
-  "status": "development",
+  "status": "frozen",
+  "frozen_on": "2026-11-11",
   "base_protocol_sha256": "a6eed103f1badf466f91209bf64134d370f5a077b5e1536f18bdb5620be62741",
   "phase2_completion_sha256": "9b1add1f27cc5d827c9185dd5b48fafbc3aa8108fd6770e0619d5200be272daa",
   "parameters": "Read the six five-severity grids from the frozen base protocol; 33 conditions including clean and two sensor dropouts.",
@@ -19,5 +20,22 @@
   },
   "dropout": "Return None before image preparation; omit detector call and candidate. Apply missing features later using the training-fitted cap.",
   "labels": "Do not change paired presence, sensor visibility or sensor-native ground truth.",
-  "freeze_gate": "Unit tests, visual examples for all families/severities, and a small validation-only inference smoke check; record code/config/environment hashes. No full dataset run needed to validate the operators."
+  "freeze_gate": "Unit tests, visual examples for all families/severities, and a small validation-only inference smoke check; record code/config/environment hashes. No full dataset run needed to validate the operators.",
+  "implementation_sha256": {
+    "src/thesis_experiments/corruptions.py": "a9dee53b3f1eb3366a52f2df2a2a005c396ff609a996028d556f60195850683a",
+    "src/thesis_experiments/degraded_inputs.py": "ef3901c29a866e2602ebb11e1be5d0ca4e1257bf10aee89df11b1f670b1aa5b4",
+    "scripts/successor/verify_corruptions.py": "1595553eb130844d049d59e5ca095f0646fa61771cc316d2716f89b9de34707e",
+    "resources/EDTC/lib/utils/belief_fusion.py": "bbb8d57b8af95357d49603ec1bce357bc4a38f725431e7b1df441416ab8d7617"
+  },
+  "validation": {
+    "job_id": "29129768",
+    "source_commit": "cba71d8",
+    "report_path": "outputs/corruption_checks/v1/verification.json",
+    "report_sha256": "6dff7733665176cb42a1b85d68bf77b6d5760b3abb24bc625245548f3631b899",
+    "validated_specification_before_freeze_sha256": "ef29e67fcfa26cda8c37caec7623dc1f65e1c6d1210186d830a4ba6199071c78",
+    "freeze_changes": "Only frozen-status and evidence metadata added after validation; operator parameters and implementation unchanged.",
+    "visual_panels_inspected": 3,
+    "scope": "3 validation frame pairs, 33 conditions, 192 model calls, 6 dropout skips; numerical/visual smoke only, no robustness-performance claim.",
+    "environment": {"numpy": "2.0.2", "opencv": "5.0.0", "pytorch": "2.4.0+cu124"}
+  }
 }

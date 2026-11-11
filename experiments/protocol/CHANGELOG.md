@@ -4,6 +4,18 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
+## Corruption specification 1.0.0 — 2026-11-11 (frozen)
+
+- Implement all 30 predeclared image corruptions plus clean and two sensor dropouts.
+- Specify float32 resized-content operations, unchanged letterbox padding,
+  reflection without repeated edge pixels, and keyed SHA-256/PCG64 noise.
+- Preserve the Phase 2 sources and completion record. Corruptions use a separate
+  adapter and do not round pixels back to uint8 before inference.
+- Job `29129768` passed three validation pairs across all conditions, including
+  repeatability, unchanged-sensor and dropout checks. All three visual panels
+  were inspected. Hashes and exact validation scope are in `corruptions_v1.json`.
+- Full cache/pilot runs remain later work and were not submitted for this freeze.
+
 ## Inference amendment 1.1.0 — 2026-11-11 (frozen settings)
 
 - Specify per-image auto-letterboxing directly from decoded frames, independent
