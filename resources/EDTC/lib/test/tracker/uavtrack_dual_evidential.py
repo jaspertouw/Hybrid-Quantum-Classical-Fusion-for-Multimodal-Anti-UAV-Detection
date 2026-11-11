@@ -33,14 +33,20 @@ import numpy as np
 
 from lib.test.tracker.uavtrack_dual import DualStreamTracker
 from lib.models.yolo_evidential.model import EvidentialYOLO
+from lib.models.yolo_evidential.postprocess import selected_anchor_uncertainty
 
 from yolov5.utils.augmentations import letterbox
 from yolov5.utils.general import check_img_size, non_max_suppression, scale_boxes
 from yolov5.utils.torch_utils import select_device
 
 _ZERO_BOX  = [0, 0, 0, 0]
-_ZERO_UNC  = {'belief': 0.0, 'uncertainty_evi': 1.0,
-              'sigma2_norm': torch.zeros(4)}
+_ZERO_UNC  = {
+    'belief': 0.0,
+    'uncertainty_evi': 1.0,
+    'sigma2_norm': torch.zeros(4),
+    'sigma2_norm_corrected': torch.zeros(4),
+    'sigma2_norm_inherited': torch.zeros(4),
+}
 
 
 class DualStreamEvidentialTracker(DualStreamTracker):
@@ -154,6 +160,7 @@ class DualStreamEvidentialTracker(DualStreamTracker):
         if len(det) == 0:
             return None, dict(_ZERO_UNC)
 
+        unc = self._extract_best_anchor_unc(nms_preds[0], unc_scales, det[0])
         det[:, :4] = scale_boxes(im_t.shape[2:], det[:, :4], image.shape).round()
         best = det[0, :4].cpu().numpy()
         box_xywh = [
@@ -162,50 +169,21 @@ class DualStreamEvidentialTracker(DualStreamTracker):
             float(best[3] - best[1] + 1),
         ]
 
-        # ── Extract uncertainty for the best detection anchor ─────────
-        unc = self._extract_best_anchor_unc(unc_scales, det, im_t, image)
-
         return box_xywh, unc
 
-    def _extract_best_anchor_unc(self, unc_scales, det, im_t, image_orig):
-        """Extract evidential uncertainty values for the highest-scoring detection.
-
-        Since EvidentialDetect returns per-scale uncertainty maps and NMS
-        collapses anchors, we conservatively return the *mean* uncertainty
-        across all positive detections after NMS.  For Phase 4 this gives a
-        reliable single-value estimate per frame.
-
-        Args:
-            unc_scales: list of per-scale uncertainty dicts.
-            det:        NMS output tensor (N, 6) — [x1,y1,x2,y2,conf,cls].
-            im_t:       (1,3,H,W) inference-space image tensor.
-            image_orig: original image (for scale reference).
-
-        Returns:
-            dict with 'belief', 'uncertainty_evi', 'sigma2_norm'.
-        """
-        if unc_scales is None or len(det) == 0:
+    def _extract_best_anchor_unc(self, prediction, unc_scales, selected_detection):
+        """Extract values from the exact anchor producing the top survivor."""
+        if unc_scales is None or selected_detection.numel() == 0:
             return dict(_ZERO_UNC)
-
-        # Collect across scales
-        all_u   = []
-        all_b   = []
-        all_sig = []
-        for s in unc_scales:
-            all_u.append(s['u'].flatten())
-            all_b.append(s['b'].flatten(end_dim=-2)[..., 0])  # UAV belief
-            all_sig.append(s['sigma2_norm'].flatten(end_dim=-2))  # (N,4)
-
-        u_all   = torch.cat(all_u)
-        b_all   = torch.cat(all_b)
-        sig_all = torch.cat(all_sig, dim=0)
-
-        # Use the detection with highest confidence (det already sorted by conf)
-        # Return the mean across detections ≥ conf_thres (already filtered by NMS)
+        selected = selected_anchor_uncertainty(
+            prediction, unc_scales, selected_detection
+        )
         return {
-            'belief':          b_all.mean().item(),
-            'uncertainty_evi': u_all.mean().item(),
-            'sigma2_norm':     sig_all.mean(dim=0).cpu(),  # (4,)
+            'belief': selected['beliefs'][0].item(),
+            'uncertainty_evi': selected['uncertainty'].item(),
+            'sigma2_norm': selected['sigma2_norm_corrected'].cpu(),
+            'sigma2_norm_corrected': selected['sigma2_norm_corrected'].cpu(),
+            'sigma2_norm_inherited': selected['sigma2_norm_inherited'].cpu(),
         }
 
     # ------------------------------------------------------------------
@@ -264,9 +242,11 @@ class DualStreamEvidentialTracker(DualStreamTracker):
             'ir_belief':           ir_unc.get('belief',          0.0),
             'ir_uncertainty_evi':  ir_unc.get('uncertainty_evi', 1.0),
             'ir_sigma2_norm':      ir_unc.get('sigma2_norm',      torch.zeros(4)),
+            'ir_sigma2_norm_inherited': ir_unc.get('sigma2_norm_inherited', torch.zeros(4)),
             'rgb_belief':          rgb_unc.get('belief',          0.0),
             'rgb_uncertainty_evi': rgb_unc.get('uncertainty_evi', 1.0),
             'rgb_sigma2_norm':     rgb_unc.get('sigma2_norm',     torch.zeros(4)),
+            'rgb_sigma2_norm_inherited': rgb_unc.get('sigma2_norm_inherited', torch.zeros(4)),
         }
 
 
