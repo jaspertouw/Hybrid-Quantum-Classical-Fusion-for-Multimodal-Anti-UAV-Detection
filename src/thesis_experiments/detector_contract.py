@@ -100,3 +100,30 @@ def load_detector_pair(
         clean_checkpoints=clean,
         document=document,
     )
+
+
+def load_phase2_manifest(manifest_path: Path, *, repository: Path) -> dict:
+    """Verify the completed inference contract before a later cache/fusion run.
+
+    Future consumers must use this gate as well as the immutable pair loader.
+    Training logs remain archived evidence; routine consumers verify the scientific
+    inputs, source files and canonical audit rather than rehashing every large log.
+    """
+    manifest_path = manifest_path.resolve(strict=True)
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if document.get("schema_version") != 1 or document.get("status") != "phase2_complete":
+        raise ValueError("Phase 2 is not complete")
+    for key in ("detector_pair", "development_manifest", "inference_amendment", "canonical_audit"):
+        _verified_record(document.get(key), key)
+    pair = load_detector_pair(Path(document["detector_pair"]["path"]))
+    if document["detector_pair"]["sha256"] != pair.manifest_sha256:
+        raise RuntimeError("Phase 2 detector identity mismatch")
+    repository = repository.resolve()
+    for modality in ("rgb", "thermal"):
+        summary_path = _verified_record(document["extraction"][modality]["summary"], f"{modality} summary")
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        for relative, digest in summary["source_provenance"]["source_sha256"].items():
+            source = (repository / relative).resolve()
+            if not source.is_relative_to(repository) or sha256_file(source) != digest:
+                raise RuntimeError(f"frozen inference source changed: {relative}")
+    return document

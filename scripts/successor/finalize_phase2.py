@@ -143,14 +143,38 @@ def main():
     for modality in ("thermal", "rgb"):
         summary_path = canonical / f"{modality}_summary.json"
         summary = json.loads(summary_path.read_text())
-        if summary["output_sha256"] != sha256_file(canonical / f"{modality}.jsonl"):
+        actual_output_hash = sha256_file(canonical / f"{modality}.jsonl")
+        if summary["output_sha256"] != actual_output_hash:
             raise ValueError("canonical output hash mismatch")
+        if audit["candidate_shards"][modality]["sha256"] != actual_output_hash:
+            raise ValueError("audit was not generated from canonical extraction")
+        if (summary.get("precision") != "strict-fp32" or summary.get("batch_size") != 128
+                or summary.get("inference_amendment_sha256") != sha256_file(amendment)):
+            raise ValueError("canonical extraction contract mismatch")
+        if summary["source_provenance"]["git_dirty"]:
+            raise ValueError("canonical extraction source was dirty")
         extraction[modality] = {"summary": record(summary_path), "counts": summary["counts"]}
         parity_path = project / f"outputs/validation_candidates/v1/{modality}_parity_strict-fp32_batch128.json"
         report = json.loads(parity_path.read_text())
         if (not report["passed"] or report["counts"]["sampled_frames"] != 201
                 or report.get("batch_size") != 128):
             raise ValueError(f"strict inference parity did not pass: {modality}")
+        if report["detector_pair_manifest_sha256"] != pair.manifest_sha256:
+            raise ValueError("parity report used a different detector pair")
+        for relative in (
+            "src/thesis_experiments/inference_runtime.py",
+            "src/thesis_experiments/detector_preprocessing.py",
+            "resources/EDTC/lib/models/yolo_evidential/postprocess.py",
+            "resources/EDTC/lib/models/yolo_evidential/detect_head.py",
+            "resources/EDTC/lib/models/yolo_evidential/model.py",
+            "resources/EDTC/lib/utils/spatial_uncertainty.py",
+            "resources/EDTC/yolov5/utils/augmentations.py",
+            "resources/EDTC/yolov5/utils/general.py",
+        ):
+            current = sha256_file(repository / relative)
+            if (report["source_provenance"]["source_sha256"][relative] != current
+                    or summary["source_provenance"]["source_sha256"][relative] != current):
+                raise ValueError(f"inference source differs between parity, extraction and freeze: {relative}")
         parity[modality] = record(parity_path)
     base = project / "checkpoints/base/yolov5s.pt"
     if sha256_file(base) != "8b3b748c1e592ddd8868022e8732fde20025197328490623cc16c6f24d0782ee":

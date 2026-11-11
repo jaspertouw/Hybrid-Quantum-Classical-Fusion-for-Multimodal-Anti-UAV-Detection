@@ -64,3 +64,26 @@ def test_load_detector_pair_rejects_wrong_manifest_hash(tmp_path, monkeypatch):
     path, _ = _manifest(tmp_path, monkeypatch)
     with pytest.raises(RuntimeError, match="manifest SHA-256 mismatch"):
         detector_contract.load_detector_pair(path, expected_manifest_sha256="0" * 64)
+
+
+def test_completed_phase2_consumer_rejects_modified_scientific_source(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    source = _write(tmp_path / "scientific_source.py", b"frozen implementation")
+    summary = _write(tmp_path / "summary.json", json.dumps({"source_provenance": {
+        "source_sha256": {"scientific_source.py": source["sha256"]}
+    }}).encode())
+    core = _write(tmp_path / "input.json", b"input")
+    pair = _write(tmp_path / "pair.json", b"pair")
+    monkeypatch.setattr(detector_contract, "load_detector_pair",
+                        lambda path: SimpleNamespace(manifest_sha256=pair["sha256"]))
+    payload = {"schema_version": 1, "status": "phase2_complete", "detector_pair": pair,
+               "development_manifest": core, "inference_amendment": core,
+               "canonical_audit": core, "extraction": {
+                   "rgb": {"summary": summary}, "thermal": {"summary": summary}}}
+    manifest_path = tmp_path / "phase2.json"
+    manifest_path.write_text(json.dumps(payload))
+    detector_contract.load_phase2_manifest(manifest_path, repository=tmp_path)
+    (tmp_path / "scientific_source.py").write_bytes(b"changed implementation")
+    with pytest.raises(RuntimeError, match="frozen inference source changed"):
+        detector_contract.load_phase2_manifest(manifest_path, repository=tmp_path)
