@@ -18,6 +18,7 @@ readonly DATA_ROOT="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
 readonly DERIVED_ROOT="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
 readonly CLEAN_ROOT="${PROJECT_ROOT}/checkpoints/detectors/clean_yolo"
 readonly OUTPUT_ROOT="${PROJECT_ROOT}/checkpoints/detectors/evidential"
+readonly PAIR_MANIFEST="${PROJECT_ROOT}/outputs/manifests/detector_pair_v1.json"
 readonly MODALITIES=(thermal rgb)
 readonly MODALITY="${MODALITIES[${SLURM_ARRAY_TASK_ID}]}"
 readonly CLEAN_WEIGHT="${CLEAN_ROOT}/${MODALITY}_seed0/weights/best.pt"
@@ -27,6 +28,7 @@ test -d "${REPO}/.git"
 test -x "${ENV_PREFIX}/bin/python"
 test -f "${CLEAN_WEIGHT}"
 test -f "${CHECKPOINT}"
+test -f "${PAIR_MANIFEST}"
 test ! -e "${DATA_ROOT}/test"
 
 module purge
@@ -36,7 +38,7 @@ module load CUDA/12.6.0
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ENV_PREFIX}"
 
-export PYTHONPATH="${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
+export PYTHONPATH="${REPO}:${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
 cd "${REPO}/resources/EDTC"
 
 echo "Job: ${SLURM_JOB_ID}; modality: ${MODALITY}; repository: $(git -C "${REPO}" rev-parse HEAD)"
@@ -44,6 +46,8 @@ sha256sum "${CLEAN_WEIGHT}" "${CHECKPOINT}"
 
 srun python -u "${REPO}/scripts/successor/verify_evidential_checkpoint.py" \
     --checkpoint "${CHECKPOINT}" \
+    --detector-pair-manifest "${PAIR_MANIFEST}" \
+    --modality "${MODALITY}" \
     --base-weights "${CLEAN_WEIGHT}" \
     --data "${DERIVED_ROOT}/${MODALITY}/dataset.yaml" \
     --train-txt "${DERIVED_ROOT}/${MODALITY}/train_images.txt" \

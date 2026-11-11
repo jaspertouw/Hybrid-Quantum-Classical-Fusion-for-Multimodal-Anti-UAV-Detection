@@ -4,6 +4,15 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
+## Inference amendment 1.0.0 — 2026-11-11 (development)
+
+- Added `inference_v1.json` without modifying frozen protocol `v1.json`.
+- Made the grid-to-pixel variance conversion, inference clipping, input-space
+  normalization, inclusive score boundary, and deterministic exact-anchor rule
+  explicit.
+- This amendment remains in development until the full paired validation audit
+  passes; it must not yet be described as frozen.
+
 ## 1.0.0 — 2026-10-29
 
 - Transcribed the experimental design from `thesis/sections/3-methodology.tex`.

@@ -8,17 +8,18 @@ from pathlib import Path
 import torch
 
 from yolov5.utils.torch_utils import select_device
-from yolov5.utils.general import non_max_suppression
-
 from lib.models.yolo_evidential.model import EvidentialYOLO
-from lib.models.yolo_evidential.postprocess import selected_anchor_uncertainty
+from lib.models.yolo_evidential.postprocess import select_successor_candidate
 from lib.models.yolo_evidential.train_single_stream import build_loaders, validate
 from lib.models.yolo_evidential.verify import run_verification
+from src.thesis_experiments.detector_contract import load_detector_pair
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--detector-pair-manifest", type=Path, required=True)
+    parser.add_argument("--modality", choices=("rgb", "thermal"), required=True)
     parser.add_argument("--base-weights", type=Path, required=True)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--train-txt", type=Path, required=True)
@@ -27,6 +28,18 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
+
+    pair = load_detector_pair(args.detector_pair_manifest)
+    selected_checkpoint = pair.selected_checkpoints[args.modality]
+    if args.checkpoint.resolve() != selected_checkpoint:
+        raise RuntimeError(
+            f"{args.modality} checkpoint is not the frozen selected checkpoint: "
+            f"{args.checkpoint.resolve()}"
+        )
+    print(
+        f"detector_pair={pair.manifest_sha256} "
+        f"modality={args.modality} checkpoint={selected_checkpoint}"
+    )
 
     device = select_device(args.device)
     model = EvidentialYOLO.load(
@@ -61,23 +74,25 @@ def main() -> None:
         f"spatial_inherited_mean={inherited.mean().item():.6f}"
     )
 
-    detections = non_max_suppression(predictions, 0.25, 0.45, max_det=300)
     selected_corrected = []
     selected_inherited = []
-    for batch_index, detection in enumerate(detections):
-        if len(detection) == 0:
-            continue
-        selected = selected_anchor_uncertainty(
-            predictions[batch_index], uncertainty_scales, detection[0], batch_index
+    selected_objectness = []
+    for batch_index, prediction in enumerate(predictions):
+        selected = select_successor_candidate(
+            prediction, uncertainty_scales, batch_index, score_minimum=0.25
         )
+        if selected is None:
+            continue
         selected_corrected.append(selected["sigma2_norm_corrected"].mean())
-        selected_inherited.append(selected["sigma2_norm_inherited"].mean())
+        selected_inherited.append(selected["sigma2_norm_inherited_head"].mean())
+        selected_objectness.append(selected["objectness"])
     if not selected_corrected:
         raise RuntimeError("sample batch produced no selected detections")
     print(
         f"selected_anchors={len(selected_corrected)} "
         f"selected_corrected_mean={torch.stack(selected_corrected).mean().item():.6f} "
-        f"selected_inherited_mean={torch.stack(selected_inherited).mean().item():.6f}"
+        f"selected_inherited_mean={torch.stack(selected_inherited).mean().item():.6f} "
+        f"selected_objectness_mean={torch.stack(selected_objectness).mean().item():.6f}"
     )
 
     print(

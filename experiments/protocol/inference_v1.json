@@ -1,0 +1,60 @@
+{
+  "amendment": {
+    "name": "successor-detector-inference-contract",
+    "version": "1.0.0",
+    "status": "development",
+    "created_on": "2026-11-11",
+    "base_protocol": {
+      "path": "experiments/protocol/v1.json",
+      "version": "1.0.0",
+      "sha256": "a6eed103f1badf466f91209bf64134d370f5a077b5e1536f18bdb5620be62741"
+    },
+    "freeze_policy": "Freeze only after full paired validation; never edit a frozen version in place."
+  },
+  "candidate_selection": {
+    "model_output": "one UAV class",
+    "score": "objectness * b_uav",
+    "minimum": 0.25,
+    "minimum_is_inclusive": true,
+    "nms_iou": 0.45,
+    "nms_merge": false,
+    "maximum_survivors": 300,
+    "selected_candidate": "highest-scoring survivor",
+    "exact_anchor_rule": "select the highest-scoring eligible flattened anchor directly; for one-class non-merge NMS it is necessarily the highest-scoring survivor",
+    "score_tie_rule": "lowest flattened anchor index",
+    "nms_time_limit": "not applicable to top-candidate extraction"
+  },
+  "variance": {
+    "model_log_variance_units": "detection-grid-coordinate squared",
+    "inference_log_variance_clip": [-10.0, 10.0],
+    "pixel_variance": "exp(clipped_log_variance) * stride^2",
+    "corrected_components": [
+      "var_cx_pixel / max(width_input, 1)^2",
+      "var_cy_pixel / max(height_input, 1)^2",
+      "var_w_pixel / max(width_input, 1)^2",
+      "var_h_pixel / max(height_input, 1)^2"
+    ],
+    "spatial_uncertainty": "mean(corrected_components)",
+    "coordinate_order": ["cx", "cy", "w", "h"],
+    "selection_uses_uncapped_value": true
+  },
+  "coordinates": {
+    "uncertainty_normalization": "letterboxed detector-input coordinates before scaling or endpoint rounding",
+    "candidate_box_storage": "sensor-native continuous xyxy plus detector-input xywh",
+    "ground_truth_matching": "sensor-native coordinates"
+  },
+  "missing_detection": {
+    "beliefs": [0.0, 0.0],
+    "semantic_uncertainty": 1.0,
+    "objectness": 0.0,
+    "candidate_box": null,
+    "spatial_uncertainty": "training-only 99.5th-percentile cap; assigned after fitting"
+  },
+  "required_checks": [
+    "finite prediction and uncertainty tensors",
+    "beliefs non-negative",
+    "sum(beliefs) + semantic_uncertainty equals one within 1e-5",
+    "coordinate variances strictly positive",
+    "flattened uncertainty anchor count equals prediction anchor count"
+  ]
+}
