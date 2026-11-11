@@ -21,6 +21,8 @@ def _manifest(tmp_path: Path, monkeypatch) -> tuple[Path, dict]:
     development = _write(tmp_path / "development.jsonl", b"development\n")
     rgb = _write(tmp_path / "rgb.pt", b"rgb")
     thermal = _write(tmp_path / "thermal.pt", b"thermal")
+    rgb_clean = _write(tmp_path / "rgb-clean.pt", b"rgb-clean")
+    thermal_clean = _write(tmp_path / "thermal-clean.pt", b"thermal-clean")
     monkeypatch.setattr(detector_contract, "EXPECTED_PROTOCOL_SHA256", protocol["sha256"])
     monkeypatch.setattr(detector_contract, "EXPECTED_DEVELOPMENT_SHA256", development["sha256"])
     document = {
@@ -29,8 +31,8 @@ def _manifest(tmp_path: Path, monkeypatch) -> tuple[Path, dict]:
         "protocol": protocol,
         "development_manifest": development,
         "modalities": {
-            "rgb": {"selected": rgb},
-            "thermal": {"selected": thermal},
+            "rgb": {"selected": rgb, "clean": rgb_clean},
+            "thermal": {"selected": thermal, "clean": thermal_clean},
         },
     }
     path = tmp_path / "pair.json"
@@ -44,6 +46,7 @@ def test_load_detector_pair_verifies_all_consumed_files(tmp_path, monkeypatch):
         path, expected_manifest_sha256=detector_contract.sha256_file(path)
     )
     assert set(pair.selected_checkpoints) == {"rgb", "thermal"}
+    assert set(pair.clean_checkpoints) == {"rgb", "thermal"}
     assert pair.protocol_path.name == "protocol.json"
 
 

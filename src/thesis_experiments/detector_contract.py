@@ -29,6 +29,7 @@ class DetectorPair:
     protocol_path: Path
     development_manifest_path: Path
     selected_checkpoints: Mapping[str, Path]
+    clean_checkpoints: Mapping[str, Path]
     document: Mapping[str, object]
 
 
@@ -86,11 +87,16 @@ def load_detector_pair(
         modality: _verified_record(modalities[modality].get("selected"), f"{modality} selected checkpoint")
         for modality in ("rgb", "thermal")
     }
+    clean = {
+        modality: _verified_record(modalities[modality].get("clean"), f"{modality} clean checkpoint")
+        for modality in ("rgb", "thermal")
+    }
     return DetectorPair(
         manifest_path=manifest_path,
         manifest_sha256=actual_manifest_hash,
         protocol_path=_verified_record(protocol, "protocol"),
         development_manifest_path=_verified_record(development, "development manifest"),
         selected_checkpoints=selected,
+        clean_checkpoints=clean,
         document=document,
     )

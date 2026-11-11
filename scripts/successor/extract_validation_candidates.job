@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=extract_val_candidates
+#SBATCH --array=0-1%2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%A_%a.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly DATA_ROOT="${PROJECT_ROOT}/data/Anti-UAV-RGBT"
+readonly DERIVED_ROOT="${PROJECT_ROOT}/data/derived/yolo_inherited_v1"
+readonly MANIFEST_ROOT="${PROJECT_ROOT}/outputs/manifests"
+readonly OUTPUT_ROOT="${PROJECT_ROOT}/outputs/validation_candidates/v1"
+readonly MODALITIES=(thermal rgb)
+readonly MODALITY="${MODALITIES[${SLURM_ARRAY_TASK_ID}]}"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test -f "${MANIFEST_ROOT}/detector_pair_v1.json"
+test -f "${MANIFEST_ROOT}/development_v1.jsonl"
+test ! -e "${DATA_ROOT}/test"
+mkdir -p "${OUTPUT_ROOT}"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load CUDA/12.6.0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+
+export PYTHONPATH="${REPO}:${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
+cd "${REPO}"
+
+echo "Job: ${SLURM_JOB_ID}; modality: ${MODALITY}; repository: $(git rev-parse HEAD)"
+srun python -u scripts/successor/extract_validation_candidates.py \
+    --detector-pair-manifest "${MANIFEST_ROOT}/detector_pair_v1.json" \
+    --inference-amendment "${REPO}/experiments/protocol/inference_v1.json" \
+    --derived-root "${DERIVED_ROOT}" \
+    --modality "${MODALITY}" \
+    --val-txt "${DERIVED_ROOT}/${MODALITY}/val_images.txt" \
+    --output "${OUTPUT_ROOT}/${MODALITY}.jsonl" \
+    --summary "${OUTPUT_ROOT}/${MODALITY}_summary.json" \
+    --device 0 \
+    --batch-size 128 \
+    --workers 8
