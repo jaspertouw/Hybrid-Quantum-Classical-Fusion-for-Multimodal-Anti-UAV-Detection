@@ -29,4 +29,4 @@ srun python -u scripts/successor/verify_inference_parity.py \
     --derived-root "${PROJECT_ROOT}/data/derived/yolo_inherited_v1" \
     --modality "${MODALITY}" \
     --val-txt "${PROJECT_ROOT}/data/derived/yolo_inherited_v1/${MODALITY}/val_images.txt" \
-    --output "${PROJECT_ROOT}/outputs/validation_candidates/v1/${MODALITY}_parity.json"
+    --output "${PROJECT_ROOT}/outputs/validation_candidates/v1/${MODALITY}_parity_diagnostics_v2.json"
