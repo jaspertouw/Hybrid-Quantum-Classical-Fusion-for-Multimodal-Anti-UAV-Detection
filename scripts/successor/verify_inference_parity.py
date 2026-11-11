@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from src.thesis_experiments.detector_preprocessing import prepare_image, PREPROC
 from src.thesis_experiments.io import atomic_write_json
 from src.thesis_experiments.provenance import sha256_file
 from src.thesis_experiments.parity_checks import compare_values
+from src.thesis_experiments.inference_runtime import configure_inference
 from yolov5.utils.augmentations import letterbox
 from yolov5.utils.dataloaders import create_dataloader
 from yolov5.utils.general import non_max_suppression
@@ -33,16 +33,14 @@ def main():
     parser.add_argument("--val-txt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--precision", choices=("inherited", "strict-fp32"), default="inherited")
+    parser.add_argument("--batch-size", type=int, default=2)
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
     if args.precision == "strict-fp32":
-        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-        torch.backends.cuda.matmul.allow_tf32 = False
-        torch.backends.cudnn.allow_tf32 = False
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-        torch.use_deterministic_algorithms(True)
+        configure_inference()
+    if args.batch_size < 2:
+        raise ValueError("parity requires batch_size >= 2")
     pair = load_detector_pair(args.detector_pair_manifest)
     expected = _expected_images(pair.development_manifest_path, args.derived_root, args.modality)
     device = select_device("0")
@@ -84,11 +82,13 @@ def main():
                     mismatched_keys.append(expected[path])
                 tensor = torch.from_numpy(canonical).to(device).float().unsqueeze(0) / 255.0
                 single = model(tensor)
-                batched = model(tensor.repeat(2, 1, 1, 1))
+                batched = model(tensor.repeat(args.batch_size, 1, 1, 1))
                 a = select_successor_batch(single[0], single[4])[0]
                 b = select_successor_batch(batched[0], batched[4])
                 frame_failed = False
                 for batch_position, item in enumerate(b):
+                    if batch_position not in (0, len(b) - 1):
+                        continue
                     if (a is None) != (item is None):
                         counts["availability_mismatches"] += 1
                         frame_failed = True
@@ -161,6 +161,8 @@ def main():
         "modality": args.modality,
         "preprocessing": PREPROCESSING_ID,
         "precision": args.precision,
+        "batch_size": args.batch_size,
+        "compared_batch_positions": [0, args.batch_size - 1],
         "detector_pair_manifest_sha256": pair.manifest_sha256,
         "counts": dict(counts),
         "sampling": "first/middle/last frame of every validation sequence",

@@ -19,6 +19,7 @@ from lib.models.yolo_evidential.postprocess import select_successor_batch
 from src.thesis_experiments.detector_contract import load_detector_pair
 from src.thesis_experiments.candidate_validation import validate_inference_amendment
 from src.thesis_experiments.detector_preprocessing import image_batches, PREPROCESSING_ID
+from src.thesis_experiments.inference_runtime import configure_inference
 from src.thesis_experiments.io import atomic_write_json
 from src.thesis_experiments.provenance import sha256_file, _git
 from yolov5.utils.general import check_img_size, scale_boxes
@@ -117,6 +118,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--imgsz", type=int, default=640)
     args = parser.parse_args()
+    precision = configure_inference()
 
     if args.output.exists() or args.summary.exists():
         raise FileExistsError("refusing to replace an existing extraction artifact")
@@ -216,6 +218,7 @@ def main() -> None:
         "score_minimum_inclusive": True,
         "inference_log_variance_clip": [LOG_VARIANCE_MIN, LOG_VARIANCE_MAX],
         "preprocessing": PREPROCESSING_ID,
+        "precision": precision,
         "imgsz": imgsz,
         "stride": stride,
         "batch_size": args.batch_size,
@@ -235,6 +238,11 @@ def source_provenance():
                repository / "resources/EDTC/lib/utils/spatial_uncertainty.py",
                repository / "resources/EDTC/yolov5/utils/augmentations.py",
                repository / "resources/EDTC/yolov5/utils/general.py"]
+    sources.extend(repository / name for name in (
+        "src/thesis_experiments/inference_runtime.py",
+        "src/thesis_experiments/detector_contract.py",
+        "src/thesis_experiments/candidate_validation.py",
+    ))
     return {
         "git_commit": _git(repository, "rev-parse", "HEAD"),
         "git_dirty": bool(_git(repository, "status", "--porcelain")),

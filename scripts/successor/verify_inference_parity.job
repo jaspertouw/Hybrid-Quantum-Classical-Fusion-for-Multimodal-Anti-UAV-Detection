@@ -15,6 +15,7 @@ readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
 readonly MODALITIES=(thermal rgb)
 readonly MODALITY="${MODALITIES[${SLURM_ARRAY_TASK_ID}]}"
 readonly PRECISION="${PARITY_PRECISION:-inherited}"
+readonly BATCH_SIZE="${PARITY_BATCH_SIZE:-2}"
 test ! -e "${PROJECT_ROOT}/data/Anti-UAV-RGBT/test"
 module purge
 module load 2024
@@ -30,5 +31,6 @@ srun python -u scripts/successor/verify_inference_parity.py \
     --derived-root "${PROJECT_ROOT}/data/derived/yolo_inherited_v1" \
     --modality "${MODALITY}" \
     --precision "${PRECISION}" \
+    --batch-size "${BATCH_SIZE}" \
     --val-txt "${PROJECT_ROOT}/data/derived/yolo_inherited_v1/${MODALITY}/val_images.txt" \
-    --output "${PROJECT_ROOT}/outputs/validation_candidates/v1/${MODALITY}_parity_${PRECISION}.json"
+    --output "${PROJECT_ROOT}/outputs/validation_candidates/v1/${MODALITY}_parity_${PRECISION}_batch${BATCH_SIZE}.json"

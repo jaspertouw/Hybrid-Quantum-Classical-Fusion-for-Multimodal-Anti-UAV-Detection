@@ -6,7 +6,7 @@
 #SBATCH --array=0-1%2
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=02:00:00
+#SBATCH --time=00:45:00
 #SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%A_%a.out
 
 set -euo pipefail

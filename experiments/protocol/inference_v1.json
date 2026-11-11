@@ -19,6 +19,16 @@
     "normalization": "BGR to RGB CHW, float32 divided by 255",
     "batching": "stack only equal-shaped individually prepared images; no padding derived from batch peers"
   },
+  "precision": {
+    "id": "strict-fp32",
+    "dtype": "float32",
+    "tf32": false,
+    "cudnn_benchmark": false,
+    "deterministic_algorithms": true,
+    "cublas_workspace_config": ":4096:8",
+    "cache_batch_size": 128,
+    "batch_parity_tolerance": {"rtol": 0.0001, "atol": 0.00001}
+  },
   "evaluation_aggregation": {
     "primary": "arithmetic mean of per-sequence EDTC Acc",
     "frame_weighted": "sum(sequence frames * sequence EDTC Acc) / sum(sequence frames)",

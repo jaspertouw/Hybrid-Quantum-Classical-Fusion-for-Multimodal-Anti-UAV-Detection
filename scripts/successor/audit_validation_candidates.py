@@ -24,7 +24,7 @@ from src.thesis_experiments.paired_evaluation import (
     legacy_dms_winner,
     legacy_native_box,
 )
-from src.thesis_experiments.provenance import sha256_file
+from src.thesis_experiments.provenance import sha256_file, _git
 
 
 EXPECTED_VALIDATION_FRAMES = 61999
@@ -107,7 +107,7 @@ def main() -> None:
     summary_records = {}
     for modality, path in (("rgb", args.rgb_shard), ("thermal", args.thermal_shard)):
         summaries[modality], summary_records[modality] = verify_shard_summary(path, modality, pair)
-    for key in ("inference_amendment_sha256", "preprocessing", "imgsz", "stride"):
+    for key in ("inference_amendment_sha256", "preprocessing", "precision", "batch_size", "imgsz", "stride"):
         if summaries["rgb"].get(key) != summaries["thermal"].get(key):
             raise RuntimeError(f"modality extraction contracts differ: {key}")
     source_rgb = summaries["rgb"].get("source_provenance")
@@ -211,6 +211,12 @@ def main() -> None:
     legacy_methodology_pooled = aggregate_pooled_components(legacy_winner_methodology_results)
     result = {
         "schema_version": 2,
+        "audit_source": {
+            "git_commit": _git(Path(__file__).resolve().parents[2], "rev-parse", "HEAD"),
+            "script_sha256": sha256_file(Path(__file__).resolve()),
+            "evaluator_sha256": sha256_file(Path(__file__).resolve().parents[2] / "src/thesis_experiments/paired_evaluation.py"),
+            "validator_sha256": sha256_file(Path(__file__).resolve().parents[2] / "src/thesis_experiments/candidate_validation.py"),
+        },
         "status": "validation_audit_not_test_result",
         "legacy_reference_scope": "released rounding, strict threshold, DMS and evaluator on extracted candidates; original preprocessing/NMS tie parity requires separate verification",
         "extraction_summaries": summary_records,
