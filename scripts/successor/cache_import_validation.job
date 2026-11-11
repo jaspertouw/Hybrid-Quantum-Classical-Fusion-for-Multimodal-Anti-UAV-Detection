@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=cache_import_val
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
+#SBATCH --time=00:30:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+module purge
+module load 2024 Miniconda3/24.7.1-0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${HOME}/.conda/envs/thesis-detector"
+export PYTHONPATH="${REPO}:${PYTHONPATH:-}"
+cd "${REPO}"
+echo "Job: ${SLURM_JOB_ID}; repository: $(git rev-parse HEAD)"
+srun python -u scripts/successor/build_detector_cache.py \
+    --mode import-validation \
+    --phase2-manifest "${PROJECT_ROOT}/outputs/manifests/phase2_completion_v1.json" \
+    --dataset-root "${PROJECT_ROOT}/data/Anti-UAV-RGBT" \
+    --derived-root "${PROJECT_ROOT}/data/derived/yolo_inherited_v1" \
+    --output-root "${PROJECT_ROOT}/outputs/caches/v1/clean/val"
