@@ -151,6 +151,8 @@ def main():
         if (summary.get("precision") != "strict-fp32" or summary.get("batch_size") != 128
                 or summary.get("inference_amendment_sha256") != sha256_file(amendment)):
             raise ValueError("canonical extraction contract mismatch")
+        if summary["counts"].get("direct_sample_checks") != 201:
+            raise ValueError("canonical cache/direct sample verification is incomplete")
         if summary["source_provenance"]["git_dirty"]:
             raise ValueError("canonical extraction source was dirty")
         extraction[modality] = {"summary": record(summary_path), "counts": summary["counts"]}

@@ -119,6 +119,8 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     args = parser.parse_args()
     precision = configure_inference()
+    if args.batch_size != 128:
+        raise ValueError("canonical inference requires the verified batch size 128")
 
     if args.output.exists() or args.summary.exists():
         raise FileExistsError("refusing to replace an existing extraction artifact")
@@ -127,6 +129,13 @@ def main() -> None:
     if args.imgsz != 640:
         raise ValueError("the inference amendment requires imgsz=640")
     expected = _expected_images(pair.development_manifest_path, args.derived_root, args.modality)
+    sequences = {}
+    for key in expected.values():
+        sequences.setdefault(key.split("/")[1], []).append(key)
+    direct_sample_keys = set()
+    for keys in sequences.values():
+        keys.sort()
+        direct_sample_keys.update(keys[index] for index in (0, len(keys) // 2, len(keys) - 1))
     amendment_hash = sha256_file(args.inference_amendment)
     device = select_device(args.device)
     model = EvidentialYOLO.load(
@@ -166,6 +175,19 @@ def main() -> None:
                     if key in seen:
                         raise RuntimeError(f"duplicate extracted key: {key}")
                     seen.add(key)
+                    if key in direct_sample_keys:
+                        direct_output = model(images[index:index + 1])
+                        direct = select_successor_batch(direct_output[0], direct_output[4])[0]
+                        if (direct is None) != (selected is None):
+                            raise RuntimeError(f"cache/direct availability mismatch: {key}")
+                        if selected is not None:
+                            if selected["anchor_index"] != direct["anchor_index"]:
+                                raise RuntimeError(f"cache/direct anchor mismatch: {key}")
+                            for field in ("box_xywh_input", "beliefs", "uncertainty", "objectness",
+                                          "sigma2_norm_corrected"):
+                                if not torch.allclose(selected[field], direct[field], rtol=1e-4, atol=1e-5):
+                                    raise RuntimeError(f"cache/direct value mismatch: {key}, {field}")
+                        counts["direct_sample_checks"] += 1
                     row = {
                         "schema_version": 1,
                         "key": key,
@@ -198,6 +220,8 @@ def main() -> None:
             raise RuntimeError(f"extraction omitted {missing} frozen validation keys")
         if counts["frames"] != EXPECTED_VALIDATION_FRAMES:
             raise RuntimeError(f"unexpected extracted frame count: {counts['frames']}")
+        if counts["direct_sample_checks"] != len(direct_sample_keys):
+            raise RuntimeError("not all predeclared cache/direct sample checks ran")
         os.replace(temporary_name, args.output)
     except BaseException:
         Path(temporary_name).unlink(missing_ok=True)

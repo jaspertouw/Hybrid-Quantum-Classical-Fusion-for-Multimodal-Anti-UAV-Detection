@@ -4,7 +4,7 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
-## Inference amendment 1.1.0 — development
+## Inference amendment 1.1.0 — 2026-11-11 (frozen settings)
 
 - Specify per-image auto-letterboxing directly from decoded frames, independent
   of batch composition; corrected extraction goes to `validation_candidates/v2`.
@@ -12,6 +12,10 @@ such as dataset and output roots, do not change the protocol version.
   scores. Preserve earlier pooled-component outputs as diagnostics.
 - Preserve completed 1.0.0 extraction/audit artifacts and their recorded hashes.
   The original amendment hash is recorded in the v1 extraction summaries.
+- Disable TF32 and use deterministic FP32 inference. Batch-128 parity job
+  `29127443` passed both modalities over 201 predeclared frames each; tolerances
+  were unchanged. Canonical full-split certification remains a separate Phase 2
+  completion artifact, created only after extraction/audit success.
 
 ## Inference amendment 1.0.0 — 2026-11-11 (development, superseded)
 

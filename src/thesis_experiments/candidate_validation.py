@@ -20,6 +20,11 @@ def validate_inference_amendment(path):
         raise ValueError("unsupported inference score boundary")
     if document["variance"]["inference_log_variance_clip"] != [-10.0, 10.0]:
         raise ValueError("unsupported inference variance bounds")
+    precision = document["precision"]
+    if (precision["id"] != "strict-fp32" or precision["tf32"] is not False
+            or precision["deterministic_algorithms"] is not True
+            or precision["cache_batch_size"] != 128):
+        raise ValueError("unsupported inference precision contract")
     return document
 
 

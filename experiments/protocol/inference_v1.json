@@ -2,14 +2,15 @@
   "amendment": {
     "name": "successor-detector-inference-contract",
     "version": "1.1.0",
-    "status": "development",
+    "status": "frozen",
+    "frozen_on": "2026-11-11",
     "created_on": "2026-11-11",
     "base_protocol": {
       "path": "experiments/protocol/v1.json",
       "version": "1.0.0",
       "sha256": "a6eed103f1badf466f91209bf64134d370f5a077b5e1536f18bdb5620be62741"
     },
-    "freeze_policy": "Freeze only after full paired validation; never edit a frozen version in place."
+    "freeze_policy": "Settings frozen after sampled parity and prior paired development audit; canonical full-split certification recorded separately in the Phase 2 completion manifest. Never edit this version in place."
   },
   "preprocessing": {
     "id": "per-image-yolo-letterbox-auto-v1",
