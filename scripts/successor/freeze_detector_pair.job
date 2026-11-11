@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=freeze_detector_pair
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=00:20:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly ENV_PREFIX="${HOME}/.conda/envs/thesis-detector"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly CHECKPOINT_ROOT="${PROJECT_ROOT}/checkpoints/detectors"
+readonly OUTPUT_DIR="${PROJECT_ROOT}/outputs/manifests"
+
+test -d "${REPO}/.git"
+test -x "${ENV_PREFIX}/bin/python"
+test ! -e "${PROJECT_ROOT}/data/Anti-UAV-RGBT/test"
+mkdir -p "${OUTPUT_DIR}"
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_PREFIX}"
+cd "${REPO}"
+
+srun python -u scripts/successor/freeze_detector_pair.py \
+    --repository "${REPO}" \
+    --protocol "${REPO}/experiments/protocol/v1.json" \
+    --development-manifest "${OUTPUT_DIR}/development_v1.jsonl" \
+    --thermal-clean "${CHECKPOINT_ROOT}/clean_yolo/thermal_seed0/weights/best.pt" \
+    --thermal-stage1 "${CHECKPOINT_ROOT}/evidential/thermal_stage1g_seed0_last.pt" \
+    --thermal-final "${CHECKPOINT_ROOT}/evidential/thermal_stage2_seed0_best.pt" \
+    --rgb-clean "${CHECKPOINT_ROOT}/clean_yolo/rgb_seed0/weights/best.pt" \
+    --rgb-stage1 "${CHECKPOINT_ROOT}/evidential/rgb_stage1g_seed0_last.pt" \
+    --rgb-final "${CHECKPOINT_ROOT}/evidential/rgb_stage2_seed0_best.pt" \
+    --output "${OUTPUT_DIR}/detector_pair_v1.json"
