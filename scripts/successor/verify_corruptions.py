@@ -14,6 +14,7 @@ import torch
 
 from lib.models.yolo_evidential.model import EvidentialYOLO
 from lib.models.yolo_evidential.postprocess import select_successor_batch
+from lib.utils.belief_fusion import compute_conflict
 from scripts.successor.audit_validation_candidates import _load_validation_frames
 from scripts.successor.extract_validation_candidates import _candidate_record
 from src.thesis_experiments.candidate_validation import validate_candidate
@@ -151,7 +152,9 @@ def main():
                     counts["selected" if candidate else "detector_missing"] += 1
                 b_rgb, u_rgb = opinions["rgb"]
                 b_thermal, u_thermal = opinions["thermal"]
-                entry["conflict_C"] = float(max(0, b_rgb.sum() * b_thermal.sum() - np.dot(b_rgb, b_thermal)))
+                entry["conflict_C"] = float(compute_conflict(
+                    torch.tensor(b_rgb, dtype=torch.float32),
+                    torch.tensor(b_thermal, dtype=torch.float32)).item())
                 entry["degree_of_conflict"] = float(0.5 * np.abs(
                     b_rgb + u_rgb / 2 - b_thermal - u_thermal / 2).sum() * (1 - u_rgb) * (1 - u_thermal))
                 results.append(entry)
@@ -163,7 +166,7 @@ def main():
     if len(results) != 99 or counts["detector_calls"] != 192 or counts["dropout_model_calls_skipped"] != 6:
         raise RuntimeError("unexpected smoke-check workload")
     sources = ["src/thesis_experiments/corruptions.py", "src/thesis_experiments/degraded_inputs.py",
-               "scripts/successor/verify_corruptions.py"]
+               "scripts/successor/verify_corruptions.py", "resources/EDTC/lib/utils/belief_fusion.py"]
     report = {
         "schema_version": 1, "passed": True, "scope": "3 validation pairs only; no performance/calibration claim",
         "phase2_manifest_sha256": sha256_file(args.phase2_manifest),
