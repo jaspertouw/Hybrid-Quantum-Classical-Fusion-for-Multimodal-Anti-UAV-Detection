@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "status": "development",
+  "base_protocol_sha256": "a6eed103f1badf466f91209bf64134d370f5a077b5e1536f18bdb5620be62741",
+  "phase2_completion_sha256": "9b1add1f27cc5d827c9185dd5b48fafbc3aa8108fd6770e0619d5200be272daa",
+  "parameters": "Read the six five-severity grids from the frozen base protocol; 33 conditions including clean and two sensor dropouts.",
+  "application": "On resized RGB sensor content in float32 [0,1], before tensor inference; preserve letterbox padding. Never round corrupted pixels back to uint8.",
+  "blur": {
+    "kernel": "separable Gaussian; radius ceil(3*sigma), size 2*ceil(3*sigma)+1; normalize float64 coefficients then cast to float32",
+    "padding": "reflect without repeating the edge pixel: NumPy reflect / OpenCV BORDER_REFLECT_101",
+    "channel_mixing": false
+  },
+  "thermal_contrast": "mu + alpha*(image-mu), with mu the scalar mean of resized content over all pixels/channels (float64 accumulation, cast to float32)",
+  "noise": {
+    "seed_input": "compact UTF-8 JSON array [2026,split,sequence,frame_integer,sensor,corruption,severity_integer], ensure_ascii=false",
+    "seed_digest": "SHA-256; first 16 bytes interpreted as unsigned big-endian integer",
+    "generator": "NumPy Generator(PCG64(seed)); standard_normal(shape) float64 draw cast to float32 before scaling",
+    "independence": "independent pixels/channels; seed independent of worker, iteration order and fusion method"
+  },
+  "dropout": "Return None before image preparation; omit detector call and candidate. Apply missing features later using the training-fitted cap.",
+  "labels": "Do not change paired presence, sensor visibility or sensor-native ground truth.",
+  "freeze_gate": "Unit tests, visual examples for all families/severities, and a small validation-only inference smoke check; record code/config/environment hashes. No full dataset run needed to validate the operators."
+}

@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=verify_corruptions
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=00:10:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+readonly REPO="${HOME}/mm-uav-threat-detection"
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+test ! -e "${PROJECT_ROOT}/data/Anti-UAV-RGBT/test"
+module purge
+module load 2024 Miniconda3/24.7.1-0 CUDA/12.6.0
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${HOME}/.conda/envs/thesis-detector"
+export PYTHONPATH="${REPO}:${REPO}/resources/EDTC:${REPO}/resources/EDTC/yolov5:${PYTHONPATH:-}"
+cd "${REPO}"
+echo "Job: ${SLURM_JOB_ID}; repository: $(git rev-parse HEAD)"
+srun python -u scripts/successor/verify_corruptions.py \
+    --phase2-manifest "${PROJECT_ROOT}/outputs/manifests/phase2_completion_v1.json" \
+    --derived-root "${PROJECT_ROOT}/data/derived/yolo_inherited_v1" \
+    --output-dir "${PROJECT_ROOT}/outputs/corruption_checks/v1"
