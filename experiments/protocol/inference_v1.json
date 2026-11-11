@@ -1,7 +1,7 @@
 {
   "amendment": {
     "name": "successor-detector-inference-contract",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "status": "development",
     "created_on": "2026-11-11",
     "base_protocol": {
@@ -10,6 +10,19 @@
       "sha256": "a6eed103f1badf466f91209bf64134d370f5a077b5e1536f18bdb5620be62741"
     },
     "freeze_policy": "Freeze only after full paired validation; never edit a frozen version in place."
+  },
+  "preprocessing": {
+    "id": "per-image-yolo-letterbox-auto-v1",
+    "image_size": 640,
+    "source": "OpenCV BGR decode",
+    "letterbox": "released YOLO letterbox(auto=True, scaleup=True, stride=model stride) directly on decoded image",
+    "normalization": "BGR to RGB CHW, float32 divided by 255",
+    "batching": "stack only equal-shaped individually prepared images; no padding derived from batch peers"
+  },
+  "evaluation_aggregation": {
+    "primary": "arithmetic mean of per-sequence EDTC Acc",
+    "frame_weighted": "sum(sequence frames * sequence EDTC Acc) / sum(sequence frames)",
+    "pooled_components": "separate diagnostic only; not frame-weighted sequence Acc"
   },
   "candidate_selection": {
     "model_output": "one UAV class",
@@ -40,7 +53,7 @@
   },
   "coordinates": {
     "uncertainty_normalization": "letterboxed detector-input coordinates before scaling or endpoint rounding",
-    "candidate_box_storage": "sensor-native continuous xyxy plus detector-input xywh",
+    "candidate_box_storage": "sensor-native continuous xywh plus detector-input xywh; no endpoint rounding or +1",
     "ground_truth_matching": "sensor-native coordinates"
   },
   "missing_detection": {

@@ -4,21 +4,25 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
 from src.thesis_experiments.detector_contract import load_detector_pair
+from src.thesis_experiments.candidate_validation import validate_candidate, verify_shard_summary
 from src.thesis_experiments.io import atomic_write_json
 from src.thesis_experiments.paired_evaluation import (
     Candidate,
     aggregate_frame_weighted,
+    aggregate_pooled_components,
     corrected_dms_winner,
     evaluate_legacy_dms_sequence,
     evaluate_sequence,
     legacy_dms_score,
     legacy_dms_winner,
+    legacy_native_box,
 )
 from src.thesis_experiments.provenance import sha256_file
 
@@ -35,6 +39,7 @@ def _load_shard(path: Path, modality: str) -> dict[str, dict | None]:
                 raise ValueError(f"invalid {modality} shard row {line_number}")
             key = row.get("key")
             candidate = row.get("candidate")
+            validate_candidate(candidate)
             if not isinstance(key, str) or key in rows:
                 raise ValueError(f"invalid or duplicate key in {modality} shard: {key}")
             if candidate is not None:
@@ -70,13 +75,14 @@ def _load_validation_frames(path: Path) -> list[dict]:
     return rows
 
 
-def _candidate(sensor: str, value: dict | None) -> Candidate | None:
+def _candidate(sensor: str, value: dict | None, *, legacy=False) -> Candidate | None:
     if value is None:
         return None
     box = value.get("box_xywh_native")
     if not isinstance(box, list) or len(box) != 4:
         raise ValueError(f"invalid native box for {sensor}")
-    return Candidate(sensor, tuple(float(item) for item in box))
+    box = tuple(float(item) for item in box)
+    return Candidate(sensor, legacy_native_box(box) if legacy else box)
 
 
 def _mean(values) -> float:
@@ -97,12 +103,46 @@ def main() -> None:
         raise FileExistsError(f"refusing to replace audit artifact: {args.output}")
 
     pair = load_detector_pair(args.detector_pair_manifest)
+    summaries = {}
+    summary_records = {}
+    for modality, path in (("rgb", args.rgb_shard), ("thermal", args.thermal_shard)):
+        summaries[modality], summary_records[modality] = verify_shard_summary(path, modality, pair)
+    for key in ("inference_amendment_sha256", "preprocessing", "imgsz", "stride"):
+        if summaries["rgb"].get(key) != summaries["thermal"].get(key):
+            raise RuntimeError(f"modality extraction contracts differ: {key}")
+    source_rgb = summaries["rgb"].get("source_provenance")
+    source_thermal = summaries["thermal"].get("source_provenance")
+    if bool(source_rgb) != bool(source_thermal):
+        raise RuntimeError("only one modality has source provenance")
+    if source_rgb:
+        for key in ("git_commit", "source_sha256", "pytorch", "cuda_runtime"):
+            if source_rgb.get(key) != source_thermal.get(key):
+                raise RuntimeError(f"modality source provenance differs: {key}")
+        if source_rgb.get("git_dirty") or source_thermal.get("git_dirty"):
+            raise RuntimeError("extraction was performed from a dirty repository")
     frames = _load_validation_frames(pair.development_manifest_path)
+    protocol = json.loads(pair.protocol_path.read_text(encoding="utf-8"))
+    membership = sorted({frame["sequence"] for frame in frames})
+    membership_hash = hashlib.sha256("".join(name + "\n" for name in membership).encode()).hexdigest()
+    if membership_hash != protocol["dataset"]["membership_sha256"]["val"]:
+        raise RuntimeError("validation sequence membership hash differs from protocol")
+    for frame in frames:
+        if frame["paired_presence"] != (frame["rgb"]["present"] or frame["thermal"]["present"]):
+            raise RuntimeError(f"paired-presence mismatch: {frame['key']}")
     rgb = _load_shard(args.rgb_shard, "rgb")
     thermal = _load_shard(args.thermal_shard, "thermal")
     expected_keys = {frame["key"] for frame in frames}
+    if len(expected_keys) != len(frames):
+        raise RuntimeError("duplicate frozen validation key")
     if set(rgb) != expected_keys or set(thermal) != expected_keys:
         raise RuntimeError("candidate shard membership differs from frozen validation manifest")
+    for modality, shard in (("rgb", rgb), ("thermal", thermal)):
+        selected_count = sum(value is not None for value in shard.values())
+        expected_counts = {"frames": len(shard), "selected": selected_count,
+                           "missing": len(shard) - selected_count}
+        for key, value in expected_counts.items():
+            if summaries[modality]["counts"].get(key) != value:
+                raise RuntimeError(f"{modality} summary count mismatch: {key}")
 
     by_sequence: dict[str, list[tuple[dict, Candidate | None, Candidate | None]]] = defaultdict(list)
     counts = Counter()
@@ -115,16 +155,21 @@ def main() -> None:
             None if rgb_value is None else float(rgb_value["spatial_uncertainty_corrected"]),
             None if thermal_value is None else float(thermal_value["spatial_uncertainty_corrected"]),
         )
-        rgb_legacy_score = None if rgb_value is None else legacy_dms_score(
-            rgb_value["sigma2_grid"], rgb_value["box_xywh_native"]
+        # Original runner uses strict > 0.25 and rounded endpoints plus one.
+        legacy_rgb_value = rgb_value if rgb_value and rgb_value["candidate_score"] > 0.25 else None
+        legacy_thermal_value = thermal_value if thermal_value and thermal_value["candidate_score"] > 0.25 else None
+        legacy_rgb = _candidate("rgb", legacy_rgb_value, legacy=True)
+        legacy_thermal = _candidate("thermal", legacy_thermal_value, legacy=True)
+        rgb_legacy_score = None if legacy_rgb is None else legacy_dms_score(
+            rgb_value["sigma2_grid"], legacy_rgb.box_xywh
         )
-        thermal_legacy_score = None if thermal_value is None else legacy_dms_score(
-            thermal_value["sigma2_grid"], thermal_value["box_xywh_native"]
+        thermal_legacy_score = None if legacy_thermal is None else legacy_dms_score(
+            thermal_value["sigma2_grid"], legacy_thermal.box_xywh
         )
         legacy_sensor = legacy_dms_winner(rgb_legacy_score, thermal_legacy_score)
         candidates = {"rgb": rgb_candidate, "thermal": thermal_candidate, None: None}
         corrected_candidate = candidates[corrected_sensor]
-        legacy_candidate = candidates[legacy_sensor]
+        legacy_candidate = {"rgb": legacy_rgb, "thermal": legacy_thermal, None: None}[legacy_sensor]
         by_sequence[frame["sequence"]].append(
             (frame, corrected_candidate, legacy_candidate)
         )
@@ -157,16 +202,21 @@ def main() -> None:
             "paired_present": corrected_result.present,
             "corrected_methodology_acc": corrected_result.accuracy,
             "legacy_winner_methodology_acc": legacy_methodology_result.accuracy,
-            "released_legacy_acc": released_result.accuracy,
+            "legacy_conventions_acc": released_result.accuracy,
         })
     if len(sequence_rows) != 67:
         raise RuntimeError(f"expected 67 validation sequences, found {len(sequence_rows)}")
 
-    corrected_pooled = aggregate_frame_weighted(corrected_results)
-    legacy_methodology_pooled = aggregate_frame_weighted(legacy_winner_methodology_results)
+    corrected_pooled = aggregate_pooled_components(corrected_results)
+    legacy_methodology_pooled = aggregate_pooled_components(legacy_winner_methodology_results)
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "validation_audit_not_test_result",
+        "legacy_reference_scope": "released rounding, strict threshold, DMS and evaluator on extracted candidates; original preprocessing/NMS tie parity requires separate verification",
+        "extraction_summaries": summary_records,
+        "source_provenance_available": bool(source_rgb),
+        "preprocessing": summaries["rgb"].get("preprocessing", "historical-rectangular-loader"),
+        "inference_amendment_sha256": summaries["rgb"]["inference_amendment_sha256"],
         "detector_pair_manifest_sha256": pair.manifest_sha256,
         "development_manifest_sha256": sha256_file(pair.development_manifest_path),
         "candidate_shards": {
@@ -183,11 +233,15 @@ def main() -> None:
             "legacy_winner_methodology_edtc": _mean(
                 r.accuracy for r in legacy_winner_methodology_results
             ),
-            "released_legacy_winner_and_evaluator_edtc": _mean(
+            "legacy_geometry_winner_and_evaluator_edtc": _mean(
                 r.accuracy for r in released_legacy_results
             ),
         },
         "frame_weighted": {
+            "corrected_winner_methodology_edtc": aggregate_frame_weighted(corrected_results),
+            "legacy_winner_methodology_edtc": aggregate_frame_weighted(legacy_winner_methodology_results),
+        },
+        "pooled_components_diagnostic": {
             "corrected_winner_methodology_edtc": corrected_pooled.accuracy,
             "legacy_winner_methodology_edtc": legacy_methodology_pooled.accuracy,
         },

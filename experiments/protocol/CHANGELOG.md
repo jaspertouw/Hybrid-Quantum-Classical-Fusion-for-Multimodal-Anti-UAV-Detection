@@ -4,7 +4,16 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
-## Inference amendment 1.0.0 — 2026-11-11 (development)
+## Inference amendment 1.1.0 — development
+
+- Specify per-image auto-letterboxing directly from decoded frames, independent
+  of batch composition; corrected extraction goes to `validation_candidates/v2`.
+- Define frame-weighted EDTC as the frame-count-weighted mean of sequence
+  scores. Preserve earlier pooled-component outputs as diagnostics.
+- Preserve completed 1.0.0 extraction/audit artifacts and their recorded hashes.
+  The original amendment hash is recorded in the v1 extraction summaries.
+
+## Inference amendment 1.0.0 — 2026-11-11 (development, superseded)
 
 - Added `inference_v1.json` without modifying frozen protocol `v1.json`.
 - Made the grid-to-pixel variance conversion, inference clipping, input-space

@@ -16,12 +16,12 @@ import torch
 
 from lib.models.yolo_evidential.model import EvidentialYOLO
 from lib.models.yolo_evidential.postprocess import select_successor_batch
-from lib.models.yolo_evidential.train_single_stream import DEFAULT_HYP
 from src.thesis_experiments.detector_contract import load_detector_pair
+from src.thesis_experiments.candidate_validation import validate_inference_amendment
+from src.thesis_experiments.detector_preprocessing import image_batches, PREPROCESSING_ID
 from src.thesis_experiments.io import atomic_write_json
-from src.thesis_experiments.provenance import sha256_file
-from yolov5.utils.dataloaders import create_dataloader
-from yolov5.utils.general import check_img_size, colorstr, scale_boxes
+from src.thesis_experiments.provenance import sha256_file, _git
+from yolov5.utils.general import check_img_size, scale_boxes
 from yolov5.utils.torch_utils import select_device
 
 
@@ -110,7 +110,6 @@ def main() -> None:
     parser.add_argument("--inference-amendment", type=Path, required=True)
     parser.add_argument("--derived-root", type=Path, required=True)
     parser.add_argument("--modality", choices=("rgb", "thermal"), required=True)
-    parser.add_argument("--val-txt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--device", default="0")
@@ -122,6 +121,9 @@ def main() -> None:
     if args.output.exists() or args.summary.exists():
         raise FileExistsError("refusing to replace an existing extraction artifact")
     pair = load_detector_pair(args.detector_pair_manifest)
+    validate_inference_amendment(args.inference_amendment)
+    if args.imgsz != 640:
+        raise ValueError("the inference amendment requires imgsz=640")
     expected = _expected_images(pair.development_manifest_path, args.derived_root, args.modality)
     amendment_hash = sha256_file(args.inference_amendment)
     device = select_device(args.device)
@@ -134,12 +136,8 @@ def main() -> None:
     model.model[-1].use_cls_for_conf = False
     stride = int(model.stride.max())
     imgsz = check_img_size(args.imgsz, s=max(stride, 32))
-    loader, _ = create_dataloader(
-        str(args.val_txt), imgsz=imgsz, batch_size=args.batch_size,
-        stride=max(stride, 32), single_cls=True, hyp=DEFAULT_HYP,
-        augment=False, cache=False, rect=True, rank=-1, workers=args.workers,
-        image_weights=False, quad=False, prefix=colorstr("val: "), shuffle=False,
-    )
+    loader = image_batches(sorted(expected), batch_size=args.batch_size,
+                           workers=args.workers, imgsz=imgsz, stride=stride)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -217,10 +215,36 @@ def main() -> None:
         "score_minimum": 0.25,
         "score_minimum_inclusive": True,
         "inference_log_variance_clip": [LOG_VARIANCE_MIN, LOG_VARIANCE_MAX],
+        "preprocessing": PREPROCESSING_ID,
+        "imgsz": imgsz,
+        "stride": stride,
+        "batch_size": args.batch_size,
+        "source_provenance": source_provenance(),
     }
     atomic_write_json(args.summary, summary)
     print(json.dumps(summary, indent=2, sort_keys=True))
     print(f"VALIDATION CANDIDATE EXTRACTION PASSED: {args.modality}")
+
+
+def source_provenance():
+    repository = Path(__file__).resolve().parents[2]
+    sources = [Path(__file__), repository / "src/thesis_experiments/detector_preprocessing.py",
+               repository / "resources/EDTC/lib/models/yolo_evidential/postprocess.py",
+               repository / "resources/EDTC/lib/models/yolo_evidential/detect_head.py",
+               repository / "resources/EDTC/lib/models/yolo_evidential/model.py",
+               repository / "resources/EDTC/lib/utils/spatial_uncertainty.py",
+               repository / "resources/EDTC/yolov5/utils/augmentations.py",
+               repository / "resources/EDTC/yolov5/utils/general.py"]
+    return {
+        "git_commit": _git(repository, "rev-parse", "HEAD"),
+        "git_dirty": bool(_git(repository, "status", "--porcelain")),
+        "source_sha256": {str(path.relative_to(repository)): sha256_file(path)
+                          for path in sources},
+        "python": __import__("sys").version,
+        "pytorch": torch.__version__,
+        "cuda_runtime": torch.version.cuda,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+    }
 
 
 if __name__ == "__main__":

@@ -115,8 +115,18 @@ def evaluate_sequence(
     )
 
 
-def aggregate_frame_weighted(results: Iterable[EdtcResult], *, alpha=0.2, beta=0.3) -> EdtcResult:
-    """Pool sequence components for the separately reported frame-weighted score."""
+def aggregate_frame_weighted(results: Iterable[EdtcResult]) -> float:
+    """Weight each sequence's EDTC score by its number of frames."""
+    values = tuple(results)
+    if not values or sum(result.frames for result in values) <= 0:
+        raise ValueError("no non-empty sequence results")
+    return sum(result.frames * result.accuracy for result in values) / sum(
+        result.frames for result in values
+    )
+
+
+def aggregate_pooled_components(results: Iterable[EdtcResult], *, alpha=0.2, beta=0.3) -> EdtcResult:
+    """Legacy audit diagnostic: pool counts before applying the nonlinear penalty."""
     values = tuple(results)
     if not values:
         raise ValueError("no sequence results")
@@ -133,6 +143,18 @@ def aggregate_frame_weighted(results: Iterable[EdtcResult], *, alpha=0.2, beta=0
         failures=failures,
         accuracy=reward / frames - penalty,
     )
+
+
+def legacy_native_box(box: Sequence[float]) -> tuple[float, float, float, float]:
+    """Released runner's rounded endpoints and inclusive (+1) dimensions.
+
+    Python round and torch.round both use ties-to-even. Input coordinates have
+    already been scaled/clipped to the sensor's native image bounds.
+    """
+    Candidate("rgb", tuple(box))  # validate geometry before conversion
+    x, y, width, height = box
+    x1, y1, x2, y2 = (float(round(v)) for v in (x, y, x + width, y + height))
+    return x1, y1, x2 - x1 + 1.0, y2 - y1 + 1.0
 
 
 def corrected_dms_winner(
@@ -200,6 +222,16 @@ def evaluate_legacy_dms_sequence(
         if thermal_present:
             thermal_present_count += 1
             overlap = frame_iou(frame, candidate)
+            # Released iou_xywh adds 1e-8 to the union denominator.
+            if candidate is not None:
+                gt = _ground_truth(frame, candidate.sensor)
+                if gt is not None and overlap > 0:
+                    box = candidate.box_xywh
+                    intersection = max(0.0, min(box[0] + box[2], gt[0] + gt[2]) - max(box[0], gt[0])) * max(
+                        0.0, min(box[1] + box[3], gt[1] + gt[3]) - max(box[1], gt[1])
+                    )
+                    union = box[2] * box[3] + gt[2] * gt[3] - intersection
+                    overlap = intersection / (union + 1e-8)
             reward_sum += overlap
             failures += int(overlap < failure_iou_threshold)
         else:

@@ -3,6 +3,8 @@ import pytest
 from src.thesis_experiments.paired_evaluation import (
     Candidate,
     aggregate_frame_weighted,
+    aggregate_pooled_components,
+    legacy_native_box,
     corrected_dms_winner,
     evaluate_legacy_dms_sequence,
     evaluate_sequence,
@@ -72,10 +74,36 @@ def test_legacy_dms_score_reproduces_first_power_native_normalization():
     assert legacy_dms_score([2, 4, 6, 8], [0, 0, 2, 4]) == pytest.approx(1.75)
 
 
-def test_frame_weighted_pooling_uses_global_present_count():
+def test_frame_weighted_and_pooled_diagnostics_are_distinct():
     first = evaluate_sequence([frame(thermal=[0, 0, 2, 2])], [None])
     second = evaluate_sequence([frame(), frame()], [None, None])
-    pooled = aggregate_frame_weighted([first, second])
+    weighted = aggregate_frame_weighted([first, second])
+    assert weighted == pytest.approx((-0.2 + 2.0) / 3)
+    pooled = aggregate_pooled_components([first, second])
     assert pooled.frames == 3
     assert pooled.present == 1
     assert pooled.accuracy == pytest.approx(2 / 3 - 0.2)
+
+
+def test_legacy_box_rounds_endpoints_then_adds_one():
+    assert legacy_native_box((0.5, 1.5, 10.0, 10.0)) == (0.0, 2.0, 11.0, 11.0)
+
+
+def test_legacy_evaluator_matches_actual_released_function():
+    # Load only these pure functions to avoid importing the legacy Torch tracker.
+    import ast
+    from pathlib import Path
+
+    source = ast.parse(Path("src/edtc_fusion/run_edtc_fusion.py").read_text())
+    functions = [node for node in source.body if isinstance(node, ast.FunctionDef)
+                 and node.name in ("iou_xywh", "compute_edtc_acc_dms")]
+    namespace = {}
+    exec(compile(ast.Module(body=functions, type_ignores=[]), "legacy_evaluator", "exec"), namespace)
+    frames = [frame(thermal=[0, 0, 0.1, 0.1]), frame(rgb=[0, 0, 1, 1]), frame()]
+    candidates = [Candidate("thermal", (0, 0, 0.1, 0.1)), Candidate("rgb", (0, 0, 1, 1)), None]
+    legacy_frames = [{"gt": row["thermal"]["box_xywh"],
+                      "rgb_gt": row["rgb"]["box_xywh"]} for row in frames]
+    predictions = [list(c.box_xywh) if c else [0, 0, 0, 0] for c in candidates]
+    winners = ["ir", "rgb", None]
+    expected = namespace["compute_edtc_acc_dms"](predictions, legacy_frames, winners)
+    assert evaluate_legacy_dms_sequence(frames, candidates).accuracy == pytest.approx(expected, abs=1e-12)
