@@ -228,7 +228,7 @@ def main() -> None:
 
 def source_provenance():
     repository = Path(__file__).resolve().parents[2]
-    sources = [Path(__file__), repository / "src/thesis_experiments/detector_preprocessing.py",
+    sources = [Path(__file__).resolve(), repository / "src/thesis_experiments/detector_preprocessing.py",
                repository / "resources/EDTC/lib/models/yolo_evidential/postprocess.py",
                repository / "resources/EDTC/lib/models/yolo_evidential/detect_head.py",
                repository / "resources/EDTC/lib/models/yolo_evidential/model.py",

@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -31,9 +32,17 @@ def main():
     parser.add_argument("--modality", choices=("rgb", "thermal"), required=True)
     parser.add_argument("--val-txt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--precision", choices=("inherited", "strict-fp32"), default="inherited")
     args = parser.parse_args()
     if args.output.exists():
         raise FileExistsError(args.output)
+    if args.precision == "strict-fp32":
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
     pair = load_detector_pair(args.detector_pair_manifest)
     expected = _expected_images(pair.development_manifest_path, args.derived_root, args.modality)
     device = select_device("0")
@@ -151,6 +160,7 @@ def main():
         "schema_version": 1,
         "modality": args.modality,
         "preprocessing": PREPROCESSING_ID,
+        "precision": args.precision,
         "detector_pair_manifest_sha256": pair.manifest_sha256,
         "counts": dict(counts),
         "sampling": "first/middle/last frame of every validation sequence",
