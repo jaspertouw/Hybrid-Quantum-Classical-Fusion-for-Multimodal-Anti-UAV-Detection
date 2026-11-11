@@ -4,6 +4,18 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
+## Frame-presence opinions 2.0.0-development
+
+- Add `presence_opinions_v1.json` as a development specification, leaving all
+  frozen v1 detector, inference and corruption artifacts unchanged.
+- Pilot sensor-specific UAV/background supervision on pooled frozen neck
+  features; retain semantic opinions without a candidate box. Sensor dropout
+  remains vacuous. Existing candidate selection/boxes remain the reference.
+- Preserve the inherited conflict operator. Require separate both-class and
+  opposite-decision diagnostics; positive conflict alone is not sufficient.
+- No production cache migration or final training schedule is approved by a
+  successful pilot execution. Review scientific gates before freezing v2.
+
 ## Corruption specification 1.0.0 — 2026-11-11 (frozen)
 
 - Implement all 30 predeclared image corruptions plus clean and two sensor dropouts.
