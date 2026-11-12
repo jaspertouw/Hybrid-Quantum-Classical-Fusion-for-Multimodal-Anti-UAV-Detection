@@ -1,0 +1,14 @@
+{
+  "status": "development",
+  "version": "1.0.0",
+  "purpose": "Expanded clean-data diagnostic; no conflict-based selection",
+  "reference_job": "29131516",
+  "reference_commit": "307bef96b3c41645f7229ac006d47554c7be09f6",
+  "pilot_specification_sha256": "59afefa9fb3156e2c5942de89d45d7d1c5575b42d06b3a30367542839691a842",
+  "expanded_per_class": 2048,
+  "arms": "Nested SHA256 samples: up to 128 versus 2048 frames per sensor-specific training class; include all background frames if fewer are available",
+  "controls": "Same seed-11 initialization for both arms, architecture, 50 full-batch epochs, Adam learning rate, prevalence weighting, KL and gradient cap from original pilot; train-only statistics separately fitted for each arm",
+  "validation": "Exactly the original 128-per-class clean validation keys for each sensor; no validation checkpoint selection; no corrupted images",
+  "reports": "Training/validation class recalls and Brier, per-class training CE/KL history, source and sample sequence support/concentration, per-sequence confusion counts and keyed validation probabilities",
+  "policy": "Descriptive diagnostics on correlated frames. Do not change loss to create opposition, declare production readiness or unlock test from this experiment. Save immutable clean pooled features for reuse."
+}
