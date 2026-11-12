@@ -1,0 +1,18 @@
+{
+  "status": "development",
+  "version": "1.0.0",
+  "purpose": "One predefined training-only comparison of frame-head class weighting",
+  "reference_job": "29153656",
+  "reference_report_sha256": "2803b6dec0c4874234739c6f320eb94688e2f5e89d4443b18c35b8cf3abc3ea3",
+  "head_specification_sha256": "59afefa9fb3156e2c5942de89d45d7d1c5575b42d06b3a30367542839691a842",
+  "split_seed": 11,
+  "head_seeds": [11, 22, 33],
+  "objectives": ["natural_prevalence", "class_balanced"],
+  "split": "Per sensor, stratify training sequences by any background support; SHA256-rank within each stratum, hold out indices 0,3,6,... once. No split retries. Both classes must be available in fit and heldout samples.",
+  "features": "Reuse only hashed clean training features from the expanded diagnostic. Fit standardization after the sequence split, on fitting frames only.",
+  "natural_prevalence": "Use original annotation prevalence of fitting training sequences for the entire CE+KL objective, correcting sampled class frequencies",
+  "class_balanced": "Give each class half of total CE+KL weight; all other settings unchanged",
+  "controls": "Same initialization within each objective pair; fixed architecture, 50 full-batch epochs, optimizer, KL schedule and gradient cap. No early stopping or best-seed selection.",
+  "evaluation": "Report raw, uncalibrated held-out training probabilities: per-class recall, balanced accuracy, natural-prevalence-weighted Brier and log loss, training-prior constant reference, losses and sequence support. Report all three seeds; no prior correction or calibration fitted here.",
+  "limits": "Head-level sequence holdout only: frozen detectors were previously trained on the whole original training split. Correlated frames are descriptive observations. Official validation/test data and conflict/corruption scores do not select the objective; this comparison cannot authorize production by itself."
+}

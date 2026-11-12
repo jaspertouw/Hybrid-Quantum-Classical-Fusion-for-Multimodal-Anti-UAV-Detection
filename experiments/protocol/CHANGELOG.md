@@ -6,6 +6,11 @@ such as dataset and output roots, do not change the protocol version.
 
 ## Frame-presence opinions 2.0.0-development
 
+- `opinion_objectives_v1.json` fixes a CPU-only natural-prior versus balanced
+  class-weight comparison after the expanded diagnostic failed. Split original
+  training sequences once, standardize fitting frames only, report all three
+  seeds and raw held-out training probability quality. No official validation
+  features, corruption/conflict objective or best-seed selection enters this step.
 - Follow-up `presence_diagnostic_v1.json` predeclares a clean-only 128 versus
   2048-per-class nested training comparison after pilot `29131516` failed its
   thermal learning gate. Architecture, objective and validation keys stay fixed;
