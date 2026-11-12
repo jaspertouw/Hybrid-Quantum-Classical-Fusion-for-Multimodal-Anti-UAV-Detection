@@ -6,6 +6,11 @@ such as dataset and output roots, do not change the protocol version.
 
 ## Frame-presence opinions 2.0.0-development
 
+- `opinion_calibration_v1.json` declares a CPU-only evidence-scaling calibration
+  check with disjoint head-fit/calibration/evaluation training sequences. Preserve
+  valid Dirichlet opinions, fit weighted NLL with an identity penalty, and require
+  both-class recognition together with probability improvements. Report all saved
+  heads/seeds; calibrated probabilities do not certify evidential uncertainty.
 - `opinion_objectives_v1.json` fixes a CPU-only natural-prior versus balanced
   class-weight comparison after the expanded diagnostic failed. Split original
   training sequences once, standardize fitting frames only, report all three

@@ -1,0 +1,18 @@
+{
+  "status": "development",
+  "version": "1.0.0",
+  "purpose": "Training-only feasibility of evidence-preserving probability calibration",
+  "objective_report_sha256": "aeeb1514fba71a1b78850dfa479bfe47d4ae6d705ffbd2d7681ff1a7165c09da",
+  "feature_reference_sha256": "2803b6dec0c4874234739c6f320eb94688e2f5e89d4443b18c35b8cf3abc3ea3",
+  "partition_seed": 11,
+  "partition": "Keep original head-fit sequences/checkpoints. Stratify remaining original training sequences by any background support; SHA256-rank once per stratum, use even ranks for calibration and odd ranks for evaluation. Do not retry splits.",
+  "mapping": "e'_k=exp(theta_k)*e_k; alpha'=e'+1; preserve b=e'/sum(alpha'), u=2/sum(alpha'), p=alpha'/sum(alpha')",
+  "regularization": 0.001,
+  "log_scale_bound": 6,
+  "max_iter": 100,
+  "optimizer": "CPU float64 L-BFGS strong Wolfe, theta=bound*tanh(raw/bound), identity initialization",
+  "objective": "Calibration-sequence natural-prevalence-weighted negative log likelihood plus regularization*mean(theta^2); no evaluation outcomes enter fitting",
+  "runs": "Every saved natural-prevalence and class-balanced head at seeds 11,22,33; report raw and calibrated results, no best seed/objective/mapping selection",
+  "gate": "Evaluation UAV and background recalls both >0.5; calibrated Brier and log loss strictly improve over raw, and Brier beats constant calibration-population-prevalence reference. Report each seed; all seeds must pass for an objective to pass the diagnostic.",
+  "limits": "All subsets come from original training data already involved in development; conditional head-level diagnostic, not an unbiased final test. No official validation features, images, corruption or conflict scoring. Valid opinion identities do not establish calibrated evidential uncertainty. No automatic primary approval."
+}
