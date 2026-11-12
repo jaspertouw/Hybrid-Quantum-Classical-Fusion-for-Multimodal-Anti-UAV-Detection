@@ -4,31 +4,13 @@ Frozen protocol files are immutable. A scientific change requires a copied file
 with a new semantic version and a dated entry here. Path-only deployment values,
 such as dataset and output roots, do not change the protocol version.
 
-## Frame-presence opinions 2.0.0-development
+## Retired frame-presence opinion extension
 
-- `opinion_calibration_v1.json` declares a CPU-only evidence-scaling calibration
-  check with disjoint head-fit/calibration/evaluation training sequences. Preserve
-  valid Dirichlet opinions, fit weighted NLL with an identity penalty, and require
-  both-class recognition together with probability improvements. Report all saved
-  heads/seeds; calibrated probabilities do not certify evidential uncertainty.
-- `opinion_objectives_v1.json` fixes a CPU-only natural-prior versus balanced
-  class-weight comparison after the expanded diagnostic failed. Split original
-  training sequences once, standardize fitting frames only, report all three
-  seeds and raw held-out training probability quality. No official validation
-  features, corruption/conflict objective or best-seed selection enters this step.
-- Follow-up `presence_diagnostic_v1.json` predeclares a clean-only 128 versus
-  2048-per-class nested training comparison after pilot `29131516` failed its
-  thermal learning gate. Architecture, objective and validation keys stay fixed;
-  save pooled features and report training/validation class and sequence support.
-- Add `presence_opinions_v1.json` as a development specification, leaving all
-  frozen v1 detector, inference and corruption artifacts unchanged.
-- Pilot sensor-specific UAV/background supervision on pooled frozen neck
-  features; retain semantic opinions without a candidate box. Sensor dropout
-  remains vacuous. Existing candidate selection/boxes remain the reference.
-- Preserve the inherited conflict operator. Require separate both-class and
-  opposite-decision diagnostics; positive conflict alone is not sufficient.
-- No production cache migration or final training schedule is approved by a
-  successful pilot execution. Review scientific gates before freezing v2.
+- Restore the inherited candidate-opinion pipeline; frozen v1 protocols and
+  Phase 6 cache implementation remain unchanged.
+- Alternative heads/calibration failed thermal readiness and were not adopted.
+  Their source remains in Git history (`307bef9` through `f496ef8`); completed
+  exploratory artifacts remain on Snellius, outside the primary experiment.
 
 ## Corruption specification 1.0.0 — 2026-11-11 (frozen)
 
