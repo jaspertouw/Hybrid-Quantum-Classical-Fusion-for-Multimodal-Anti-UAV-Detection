@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=fusion_tasks
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=6G
+#SBATCH --time=00:10:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%A_%a.out
+
+set -euo pipefail
+readonly PROJECT_ROOT="${THESIS_PROJECT_ROOT:-/projects/prjs2348/mm-uav-threat-detection}"
+readonly SOURCE_ROOT="${THESIS_SOURCE_ROOT:?Set the isolated source snapshot root}"
+readonly WORK_ROOT="${THESIS_WORK_ROOT:?Set the immutable plan/work root}"
+readonly FUSION_ENV="${THESIS_FUSION_ENV:-${PROJECT_ROOT}/environments/thesis-fusion-cpu-v1}"
+readonly STAGE="${FUSION_STAGE:?Set prepare, worker or aggregate}"
+module purge
+module load 2024 Miniconda3/24.7.1-0
+export PYTHONPATH="${SOURCE_ROOT}"
+export OMP_NUM_THREADS=2
+cd "${SOURCE_ROOT}"
+test -x "${FUSION_ENV}/bin/python"
+test -f "${WORK_ROOT}/PLAN.json"
+# Only bounded operational rehearsals/benchmarks may use this short launcher.
+"${FUSION_ENV}/bin/python" -c 'import json,os; p=json.load(open(os.environ["THESIS_WORK_ROOT"]+"/PLAN.json")); assert p["plan"]["mode"] in ("benchmark","rehearsal"), "Production plans require a reviewed submission/resource plan"'
+printf 'Stage=%s job=%s host=%s work=%s\n' "${STAGE}" "${SLURM_JOB_ID}" "$(hostname)" "${WORK_ROOT}"
+case "${STAGE}" in
+  prepare)
+    srun "${FUSION_ENV}/bin/python" -u scripts/successor/fusion_jobs.py --work-root "${WORK_ROOT}" prepare --cache-root "${PROJECT_ROOT}/outputs/caches/v1"
+    ;;
+  worker)
+    readonly INDEX="${SLURM_ARRAY_TASK_ID:?Worker must be submitted as an indexed array}"
+    flags=()
+    if [[ "${REHEARSAL_FAIL_INDEX:-none}" == "${INDEX}" ]]; then flags+=(--fail-after-checkpoint); fi
+    srun "${FUSION_ENV}/bin/python" -u scripts/successor/fusion_jobs.py --work-root "${WORK_ROOT}" worker --index "${INDEX}" "${flags[@]}"
+    ;;
+  aggregate)
+    srun "${FUSION_ENV}/bin/python" -u scripts/successor/fusion_jobs.py --work-root "${WORK_ROOT}" aggregate
+    ;;
+  *) printf 'Unknown stage: %s\n' "${STAGE}" >&2; exit 2 ;;
+esac

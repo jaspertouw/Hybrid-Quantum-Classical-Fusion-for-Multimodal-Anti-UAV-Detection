@@ -140,3 +140,45 @@ environment export are `outputs/verification/smoke_29372795/` and
 No real dataset was accessed by that job and no workload over 30 minutes was
 uploaded/submitted. Production arrays, resource/dependency/restart checks,
 architecture searches, final seeds and test readiness remain outstanding.
+
+Development task infrastructure is now available through
+`scripts/successor/fusion_jobs.py` and the bounded CPU launcher
+`scripts/successor/fusion_tasks.job`. Plans bind source hashes, the frozen
+protocol, input artifacts and configurations. Incomplete neural fits restart
+from their seed; completed fits are reused only after artifact verification.
+Aggregation refuses missing or corrupted tasks. Stale locks require explicit
+recovery with evidence that the owner is inactive. This is deterministic restart,
+not continuation of optimizer state.
+
+Local interruption/retry/reuse/corruption checks pass, alongside all 31 fusion
+tests. The real-development benchmark is
+`outputs/verification/fusion-jobs-benchmark-local-v1/`: three epochs each for
+MLP16 and VQC depths 1–4, using the fixed 20,000-pair sample and full clean
+validation. These operational timings do not select models. The local-only
+20-configuration search plan is `outputs/verification/fusion-grid-plan-local-v1/`.
+Its runtime estimate is stored with the benchmark; cluster timing and actual
+SLURM array/dependency/interruption checks remain pending. The short launcher
+explicitly rejects production grid plans. No new cluster workload was uploaded
+or submitted during this infrastructure preparation.
+
+The subsequent bounded Snellius pilot has now passed. Benchmark preparation,
+five indexed fits and dependent aggregation completed (`29375916`–`29375918`).
+The synthetic array intentionally failed task 0 (`29375913_0`), causing its
+`afterok` aggregation (`29375914`) to be cancelled. Retry array `29376569`
+restarted task 0, reused task 1 without changing its completion hash, and
+aggregation `29376570` completed. Both downloaded result sets pass artifact and
+source-contract verification. Evidence, accounting and the updated estimate:
+`outputs/verification/fusion-cluster-results-v1/`.
+
+Measured VQC training seconds/epoch at depths 1–4 were 2.11, 3.86, 5.71 and
+7.54. Three-epoch timings are extrapolations, not full-fit measurements. The
+20-configuration, seed-11 clean-development search has an approximately
+89-minute serial budget before a factor-two safety allowance: approximately
+177 worker-minutes total, or roughly 90–100 minutes with two workers, excluding
+queue delays. Early stopping may reduce this. Proposed workers: two CPUs,
+6 GiB, no GPU, 30-minute limit; Rome bills at least 16 CPUs per job.
+Preparation/aggregation have ten-minute limits. The local-only
+`fusion_grid.job` and `submit_fusion_grid.sh` implement this dependency chain.
+This production search has not been uploaded or submitted and awaits user
+approval under the aggregate workload policy. It does not include final seeds,
+ablations, noisy simulation or test evaluation.
