@@ -45,3 +45,98 @@ python -m src.thesis_experiments.cli \
 
 Completed run directories are immutable through this interface. Use a new run
 ID rather than overwriting a completed result.
+
+## Original presence-fusion workflow
+
+Verified development caches are under `outputs/caches/v1/clean/{train,val}` and
+`outputs/caches/v1/pilot/val_3_per_sequence`. Frozen detector code and checkpoints
+are unchanged. The shared feature transform fits the two spatial caps and eight
+min/max ranges on clean training only; SVM standardization is fitted separately
+inside each sequence-grouped calibration fold. Every model retains the fixed,
+uncapped spatial box selector and learns presence/acceptance only.
+
+```bash
+python3 -m venv .venv/fusion
+.venv/fusion/bin/python -m pip install -r environments/fusion_requirements.txt
+.venv/fusion/bin/python scripts/successor/run_fusion_pilot.py
+.venv/fusion/bin/python scripts/successor/select_fusion_models.py
+```
+
+Both commands refuse to overwrite a run and reject test inputs. The first
+verifies references and fixed classical configurations on full clean validation
+and the corruption pilot, with a small MLP/VQC/gate runtime check. Its five-epoch
+neural results are not final model comparisons. The second searches all nine SVM
+and nine forest settings using clean-validation EDTC at 0.5, with Brier ties,
+then executes the prescribed full-sample MLP/VQC cross-entropy-versus-squared-error
+loss pilot. Its models use the same 20,000 original training pairs; no corruption
+outcome selects a configuration or loss.
+
+Completed development runs:
+
+- `original-fusion-pilot-v1`: feature/evaluator/reference and runtime verification.
+- `clean-fusion-selection-v1`: selected SVM `C=10, gamma=0.1`, forest depth 8 /
+  minimum leaf 5, DBF exponent 1, and shared expected-squared-error evidential loss.
+  Both pilot architectures improved Brier without an EDTC reduction exceeding 0.01.
+
+Artifacts live in `outputs/successor/protocol-1.0.0/runs/<run-id>/`. Read
+`metrics/report.md` for the runtime pilot and `metrics/selection.json` for the
+clean-development selection. Outputs include feature transforms, model states,
+exact sample IDs, calibration folds, clipping counts, per-condition and natural-tag
+scores, class support, reliability bins, error ranking and output hashes.
+
+The quantum model is a differentiable, exact four-qubit complex128 statevector
+simulation implemented in Torch, with the specified rotations, ordered CNOTs and
+classical evidential head. Tests cover an analytic single-qubit identity, GHZ/ring
+basis behaviour, parameter/input finite differences and save/load equivalence.
+MLP/VQC architecture searches, final multi-seed training, full corruption caches,
+ablations and noisy simulation remain required before freezing final artifacts.
+The test split remains locked.
+
+## Verification before further selection
+
+```bash
+PYTHONPATH=. .venv/fusion/bin/python -m pytest \
+  tests/test_shared_fusion.py tests/test_neural_fusion.py tests/test_verification.py -q -W error
+.venv/fusion/bin/python scripts/successor/verify_fusion_pipeline.py
+```
+
+`outputs/verification/fusion-local-v1/report.json` records two fresh synthetic
+cache-to-export runs for all 12 methods, identical predictions/training histories,
+36 independent dense-matrix circuit checks, the original fixed-box acceptance
+oracle, explicit corruption deltas and a training-only sample-support study.
+The circuit maximum absolute error was 1.11e-15 against a 1e-12 tolerance.
+Multi-seed/condition EDTC bootstrap pairing is tested separately. AP and other
+nonlinear metrics must be recomputed from frame-level predictions when bootstrapped;
+the EDTC-only helper must not be reused for those metrics.
+
+The 20,000-pair sample contains 126 absent frames across all 15 background-bearing
+training sequences; the original SVM calibration folds contain 56/15/55 absent
+examples. A fixed training-only holdout compared 20,000, 40,000 and all fitting
+frames with fixed reference SVM/forest configurations. Neither EDTC nor specificity
+improved with larger samples; classwise calibration changed modestly. The sample
+cap remains 20,000 provisionally. These correlated frames and the holdout's three
+background-bearing sequences do not establish universal minority-class adequacy.
+
+The simulator choice is **Torch exact complex128 statevector**, checked against
+independent NumPy dense unitaries, analytic identities and finite differences.
+PennyLane is not a runtime dependency. `environments/fusion_constraints.txt`
+records the complete local package set; the detector environment stays separate.
+The CI workflow runs core and fusion checks in separate CPU jobs; configuration
+is present, but no GitHub CI execution is claimed until it actually runs.
+
+`fusion_environment_smoke.job` installs an isolated pinned CPU environment and
+runs synthetic-only verification on Snellius, with a hard ten-minute limit and
+no real dataset access. Long-work policy: notify the user and wait for approval
+before uploading/submitting a workload expected to exceed 30 minutes, including
+the aggregate proposed workload rather than splitting it to bypass that limit.
+Final model choices remain provisional until the remaining readiness gates close.
+
+Snellius smoke job **29372795** passed in **2m39s** (hard ten-minute limit).
+It used a separate CPU environment with NumPy 1.26.4, SciPy 1.13.1,
+scikit-learn 1.5.2 and Torch 2.4.1+cpu. All 12 methods repeated successfully;
+the independent quantum-reference error was 7.22e-16. Downloaded artifacts and
+environment export are `outputs/verification/smoke_29372795/` and
+`outputs/verification/environment_29372795.txt`; all output/source hashes match.
+No real dataset was accessed by that job and no workload over 30 minutes was
+uploaded/submitted. Production arrays, resource/dependency/restart checks,
+architecture searches, final seeds and test readiness remain outstanding.

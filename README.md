@@ -10,16 +10,15 @@ substantial part of the detector, tracker, fusion, training, and evaluation code
 from that project and retained here to provide the experimental baseline. New contributions for
 this thesis will be kept clearly distinguishable from the inherited implementation.
 
-> **Project status:** research design and repository setup. The inherited detector and fusion
-> code is retained as a baseline; the new VQC, classical comparison models, degradation pipeline,
-> and evaluation workflow have not yet been implemented. Do not interpret the baseline results
-> below as results from this thesis.
+> **Project status:** the replacement detector pair, degradation operators and clean
+> development caches are verified. The original presence-fusion comparison is now
+> under development. Test evaluation remains locked; inherited results are not
+> results from this thesis.
 
 ## Current thesis scope
 
-The project keeps Suttorp et al.'s RGB and thermal detectors fixed and operates on their
-decision-level outputs. The intended learned fusion inputs are detector beliefs and uncertainty
-features rather than raw images. Planned comparisons include a variational quantum classifier,
+The project uses a frozen RGB–thermal detector pair trained with Suttorp et al.'s released
+procedure. Fusion operates on detector beliefs and uncertainty features rather than raw images. Planned comparisons include a variational quantum classifier,
 an evidential MLP, an RBF-SVM, a random forest, and the inherited naive/ABF/DBF/gated fusion
 baselines. The thesis manuscript and its experiment-design chapter are maintained privately and
 are not published in this repository.
