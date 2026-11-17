@@ -1,0 +1,18 @@
+{
+  "purpose": "Original presence-fusion development and bounded runtime checks; not final model selection",
+  "seed": 11,
+  "classical_training_cap": 20000,
+  "neural_training_cap": 2048,
+  "neural_validation_cap": 2000,
+  "neural_epochs": 5,
+  "learning_rate": 0.001,
+  "loss": "cross_entropy",
+  "svm": {"C": 1.0, "gamma": 0.1},
+  "forest": {"max_depth": 8, "min_samples_leaf": 5},
+  "mlp_widths": [16],
+  "vqc_depth": 2,
+  "timing_batch_size": 128,
+  "timing_warmup": 3,
+  "timing_repetitions": 20,
+  "limitation": "Fixed configurations within the frozen grids. Neural runs use smaller samples/epoch limits for implementation and runtime verification, so they cannot establish a VQC advantage or select the final shared loss. Full grids, seeds and loss pilot remain required."
+}

@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH --account=gisr139746
+#SBATCH --partition=rome
+#SBATCH --job-name=fusion_environment
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=6G
+#SBATCH --time=00:10:00
+#SBATCH --output=/projects/prjs2348/mm-uav-threat-detection/logs/%x_%j.out
+
+set -euo pipefail
+readonly PROJECT_ROOT="/projects/prjs2348/mm-uav-threat-detection"
+readonly SOURCE_ROOT="${PROJECT_ROOT}/outputs/fusion_verification/source_v1"
+readonly FUSION_ENV="${PROJECT_ROOT}/environments/thesis-fusion-cpu-v1"
+readonly DETECTOR_PYTHON="${HOME}/.conda/envs/thesis-detector/bin/python"
+module purge
+module load 2024 Miniconda3/24.7.1-0
+if [[ ! -x "${FUSION_ENV}/bin/python" ]]; then
+  "${DETECTOR_PYTHON}" -m venv "${FUSION_ENV}"
+fi
+sed '/^torch==/d' "${SOURCE_ROOT}/environments/fusion_constraints.txt" > "${FUSION_ENV}/dependencies.txt"
+"${FUSION_ENV}/bin/python" -m pip install --timeout 30 --retries 1 -r "${FUSION_ENV}/dependencies.txt"
+"${FUSION_ENV}/bin/python" -m pip install --timeout 30 --retries 1 --no-deps torch==2.4.1 --index-url https://download.pytorch.org/whl/cpu
+"${FUSION_ENV}/bin/python" -m pip check
+export PYTHONPATH="${SOURCE_ROOT}"
+export OMP_NUM_THREADS=2
+cd "${SOURCE_ROOT}"
+srun "${FUSION_ENV}/bin/python" -u scripts/successor/fusion_environment_smoke.py \
+  --output "${PROJECT_ROOT}/outputs/fusion_verification/smoke_${SLURM_JOB_ID}"
+"${FUSION_ENV}/bin/python" -m pip freeze > "${PROJECT_ROOT}/outputs/fusion_verification/environment_${SLURM_JOB_ID}.txt"
